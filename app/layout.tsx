@@ -1,9 +1,14 @@
 import type { Metadata } from 'next'
+import { MainLayout } from "@/components/main-layout"
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'daily appiontment',
+  title: 'Daily Appiontment',
   description: 'A simple app for managing daily appointments',
+  icons: {
+    icon: '/dog-icon.png', 
+    shortcut: '/dog-icon.png',
+  },
 }
 
 export default function RootLayout({
@@ -13,7 +18,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body><MainLayout>{children}</MainLayout></body>
     </html>
   )
 }

@@ -39,7 +39,7 @@ export async function searchCustomers(
       id: customer.id.toString(),
       name: customer.customer_name || '',
       phone: customer.phone || '',
-      generalNote: customer.customer_note || '',
+      customerNote: customer.customer_note || '',
       dogs: (customer.dogs || []).map((dog: any) => ({
         id: dog.id.toString(),
         name: dog.dog_name || '',
@@ -67,53 +67,19 @@ export async function getAppointmentsByDate(
 
 export async function getAppointmentById(
   id: string
-): Promise<AppointmentData | null> {
+): Promise<AppointmentData[]> {
   const response = await fetch(`${API_BASE_URL}/appointments/${id}`)
+  const result = await handleResponse<AppointmentData[]>(response)
 
-  if (!response.ok) {
-    if (response.status === 404) return null
-    const errorData = await response.json()
-    throw new Error(errorData.error || 'Failed to fetch appointment')
-  }
+  console.log("getAppointmentsById",result.data)
 
-  const result = await response.json()
-
-  if (!result.success) return null
-  console.log('Fetched appointment data:', result.data)
-
-  const appointment = result.data.appointment
-  const dog = result.data.dog
-  const customer = result.data.customer
-  const serviceHistory = result.data.serviceHistory || []
-
-  return {
-    id: appointment.id.toString(),
-    time: appointment.appointment_time,
-    customerId: customer?.id?.toString() || null,
-    dogId: dog?.id?.toString() || null,
-    appointmentCustomerName: appointment.appointment_customer_name || '',
-    appointmentDogName: appointment.appointment_dog_name || '',
-    customerName: customer.customer_name || '',
-    dogName: dog.dog_name || '',
-    breed:  appointment.appointment_dog_breed || dog.dog_breed ||'',
-    phone: appointment.appointment_phone || '',
-    customerPhone:customer.phones || '',
-    dogNote: dog.dog_note || '',
-    customerNote: appointment.customer_note || '',
-    todaysNote: appointment.today_note || '',
-    previousServices: serviceHistory?.[0]?.service || '',
-    previousPrice: serviceHistory?.[0]?.total_price || '',
-    serviceHistory: serviceHistory,
-    todaysServices: appointment.today_services || '',
-    todaysPrice: appointment.today_price || '',
-    status: appointment.appointment_status,
-  }
+  return result.data || []
 }
 
 export async function createAppointment(
   appointment: Omit<AppointmentData, 'id'>
 ): Promise<AppointmentData> {
-  console.log("createAppointment",createAppointment)
+  console.log("createAppointment",appointment)
   const response = await fetch(`${API_BASE_URL}/appointments`, {
     method: 'POST',
     headers: {
@@ -122,7 +88,9 @@ export async function createAppointment(
     body: JSON.stringify({
       date: appointment.date, // Use current date or pass from appointment
       time: appointment.time,
+      customerId: appointment.customerId || "",
       customerName: appointment.customerName,
+      dogId: appointment.dogId || "",
       dogName: appointment.dogName,
       breed: appointment.breed,
       phone: appointment.phone,
@@ -139,13 +107,13 @@ export async function createAppointment(
 
   const result = await handleResponse<any>(response)
   const appointmentId = result.data.id.toString()
-  const appointmentDedail = await getAppointmentById(appointmentId)
+  const appointmentDetail = await getAppointmentById(appointmentId)
 
-  console.log('Created appointment detail:', appointmentDedail)
+  console.log('Created appointment detail:', appointmentDetail)
 
   // Return the appointment data
   return {
-    appointmentDedail
+    appointmentDetail
   }
 }
 
@@ -160,10 +128,10 @@ export async function updateAppointment(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      customerName: appointment.customerName,
+      customerName: appointment.appointmentCustomerName,
       dog_id: appointment.dogId,
-      dogName: appointment.dogName,
-      dog_breed: appointment.breed,
+      dogName: appointment.appointmentDogName,
+      breed: appointment.breed,
       phone: appointment.phone,
       dogNote: appointment.dogNote,
       customerNote: appointment.customerNote,
@@ -171,6 +139,8 @@ export async function updateAppointment(
       todaysServices: appointment.todaysServices,
       todaysPrice: appointment.todaysPrice,
       status: appointment.status,
+      appointment_date: appointment.date,
+      appointment_time: appointment.time,
     }),
   })
   console.log('Updating appointment with data:', appointment)
@@ -181,7 +151,7 @@ export async function updateAppointment(
   const getResponse = await fetch(`${API_BASE_URL}/appointments/${id}`)
   const getResult = await handleResponse<AppointmentData>(getResponse)
 
-  return getResult.data!
+  return getResult
 }
 
 export async function deleteAppointment(id: string): Promise<void> {
@@ -190,6 +160,17 @@ export async function deleteAppointment(id: string): Promise<void> {
   })
 
   await handleResponse<null>(response)
+}
+
+export async function deleteDog(id: string): Promise<any> {
+  const response = await fetch(`${API_BASE_URL}/dogs/${id}`, {
+    method: 'DELETE',
+  })
+
+  const result = await handleResponse<any[]>(response)
+  console.log("deleteDog",result)
+
+  return result
 }
 
 // Availability Rules API functions
@@ -254,6 +235,7 @@ export async function getDateMarking(): Promise<AvailabilityRuleData[]> {
       type: rule.type as 'weekly' | 'specific',
       markingDateOfWeek: rule.marking_day_of_week !== null ? rule.day_of_week : undefined,
       markingDate: rule.marking_date || undefined,
+      color: rule.color || "yellow", // Default color if not provided
     })) || []
   )
 }
@@ -265,6 +247,7 @@ export async function saveDateMarking(
     type: rule.type,
     marking_day_of_week: rule.markingDateOfWeek||"",
     marking_date: rule.date||"",
+    color: rule.color || "yellow", // Default color if not provided
   }
   console.log("Rules",rule)
   console.log("formattedRules",rule)
@@ -416,8 +399,10 @@ export async function createDog(
     }),
   })
   const result = await handleResponse<any>(response)
+  console.log("createDog api",result)
 
   return {
+    ok: result.success,
     id: result.data.id.toString(),
     name: result.data.name || '',
     breed: result.data.breed || '',

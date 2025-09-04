@@ -132,7 +132,7 @@ export async function DELETE(
   try {
     const id = params.id
 
-    const result = await pool.query("DELETE FROM grooming.dog WHERE id = $1 RETURNING id", [id])
+    const result = await pool.query("DELETE FROM grooming.dogs WHERE id = $1 RETURNING id", [id])
 
     if (result.rows.length === 0) {
       return NextResponse.json(
@@ -145,6 +145,7 @@ export async function DELETE(
     }
 
     return NextResponse.json({
+      ok: true,
       success: true,
       message: "Dog deleted successfully",
     })

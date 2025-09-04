@@ -27,7 +27,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<ApiRespons
 export async function POST(request: NextRequest): Promise<NextResponse<ApiResponse<AvailabilityRule>>> {
   try {
     const body = await request.json()
-    const { type, marking_day_of_week, marking_date} = body
+    const { type, marking_day_of_week, marking_date, color} = body
     console.log("availability-rules",body)
 
     // Validate required fields
@@ -64,13 +64,14 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApiRespon
 
     const result = await pool.query(
       `INSERT INTO grooming.date_marking 
-       (type, marking_day_of_week, marking_date) 
-       VALUES ($1, $2, $3) 
+       (type, marking_day_of_week, marking_date, color) 
+       VALUES ($1, $2, $3, $4) 
        RETURNING *`,
       [
         type,
         type === "weekly" ? marking_day_of_week : null,
         type === "specific" ? marking_date : null,
+        color || "yellow", // Default color if not provided
       ],
     )
 

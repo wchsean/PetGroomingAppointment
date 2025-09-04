@@ -75,7 +75,6 @@ export async function GET(request: NextRequest): Promise<NextResponse<ApiRespons
       acc[row.customer_id].push(row.phone)
       return acc
     }, {} as Record<number, string[]>)
-    console.log("appointmentsResult",appointmentsResult)
     const appointments = appointmentsResult.rows.map((row) => {
       const dogServices = servicesByDog[row.dog_id] || []
       const latestService = dogServices[0] || null
@@ -129,8 +128,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApiRespon
     const {
       date,
       time,
-      quickDetails,
       customerName,
+      dogId,
       dogName,
       breed,
       phone,
@@ -158,45 +157,45 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApiRespon
     try {
       await client.query("BEGIN")
 
-      let customerId = null
-      let dogId = null
+      // let customerId = null
+      // let dogId = null
       
-      let customerResult = null
-      let dogResult = null
-      let targetDog = null
-      // Try to find existing customer by phone
-      if (phone) {
-        customerResult = await client.query(
-          "SELECT customer_id FROM grooming.customer_phones WHERE phone =$1",
-          [phone]
-        )
+      // let customerResult = null
+      // let dogResult = null
+      // let targetDog = null
+      // // Try to find existing customer by phone
+      // if (phone) {
+      //   customerResult = await client.query(
+      //     "SELECT customer_id FROM grooming.customer_phones WHERE phone =$1",
+      //     [phone]
+      //   )
 
-        if (customerResult.rows.length > 0) {
-          // If customer exists and have mutilpale, get their ID by dog name
-          for (const row of customerResult.rows) {
-            console.log("Found existing customer by phone:", row.customer_id)
+      //   if (customerResult.rows.length > 0) {
+      //     // If customer exists and have mutilpale, get their ID by dog name
+      //     for (const row of customerResult.rows) {
+      //       console.log("Found existing customer by phone:", row.customer_id)
 
-            customerId = row.customer_id
-            console.log("Found existing customer by phone:", customerId)
+      //       customerId = row.customer_id
+      //       console.log("Found existing customer by phone:", customerId)
 
-            dogResult = await client.query(
-              "SELECT id, dog_name FROM grooming.dogs WHERE customer_id = $1",
-              [customerId]
-            )
+      //       dogResult = await client.query(
+      //         "SELECT id, dog_name FROM grooming.dogs WHERE customer_id = $1",
+      //         [customerId]
+      //       )
 
-            if (dogResult.rows.length > 0) {
-              targetDog = dogResult.rows.find(
-                (dog) => dog.dog_name.toLowerCase() === dogName.toLowerCase()
-              )
+      //       if (dogResult.rows.length > 0) {
+      //         targetDog = dogResult.rows.find(
+      //           (dog) => dog.dog_name.toLowerCase() === dogName.toLowerCase()
+      //         )
 
-              if (targetDog) {
-                dogId = targetDog.id|| ""
-                continue
-              }
-            }
-          }
-        }
-      }
+      //         if (targetDog) {
+      //           dogId = targetDog.id|| ""
+      //           continue
+      //         }
+      //       }
+      //     }
+      //   }
+      // }
       // Create the appointment
       const appointmentResult = await client.query(
         `INSERT INTO grooming.appointments 

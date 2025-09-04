@@ -96,7 +96,6 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApiRespon
 export async function PUT(request: NextRequest): Promise<NextResponse<ApiResponse<AvailabilityRule[]>>> {
   try {
     const body = await request.json()
-    console.log("/api/availabilit",body)
 
     if (!Array.isArray(body)) {
       return NextResponse.json(

@@ -41,9 +41,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const body = await request.json()
     const { date, note } = body
 
-    if (!date || !note) {
+    if (!date) {
       return NextResponse.json(
-        { success: false, error: 'Date and note are required' },
+        { success: false, error: 'Date is required' },
         { status: 400 }
       )
     }
