@@ -1,20 +1,20 @@
-import { type NextRequest, NextResponse } from "next/server"
-import pool from "@/lib/db"
-import type { ApiResponse, Customer, Dog } from "@/types"
-
-
+import { type NextRequest, NextResponse } from 'next/server'
+import pool from '@/lib/db'
+import type { ApiResponse, Customer, Dog } from '@/types'
 
 // GET /api/customers - Search customers by name, dog name, or phone
-export async function GET(request: NextRequest): Promise<NextResponse<ApiResponse<Customer[]>>> {
+export async function GET(
+  request: NextRequest,
+): Promise<NextResponse<ApiResponse<Customer[]>>> {
   try {
     const searchParams = request.nextUrl.searchParams
-    const search = searchParams.get("search")
+    const search = searchParams.get('search')
 
     if (!search || search.length < 2) {
       return NextResponse.json(
         {
           success: false,
-          error: "Search term must be at least 2 characters",
+          error: 'Search term must be at least 2 characters',
         },
         { status: 400 },
       )
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<ApiRespons
 
     if (customerIds.length > 0) {
       const dogsResult = await pool.query(
-      `
+        `
         SELECT 
           d.*,
           COALESCE(
@@ -70,6 +70,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<ApiRespons
         FROM grooming.dogs d
         LEFT JOIN grooming.service_history s ON s.dog_id = d.id
         WHERE d.customer_id = ANY($1)
+        AND d.dog_active = true
         GROUP BY d.id
         ORDER BY d.dog_name
         `,
@@ -77,36 +78,42 @@ export async function GET(request: NextRequest): Promise<NextResponse<ApiRespons
       )
 
       // Group dogs by customer_id
-      const dogsByCustomer = dogsResult.rows.reduce((acc: Record<number, Dog[]>, dog: Dog) => {
-        if (!acc[dog.customer_id]) {
-          acc[dog.customer_id] = []
-        }
+      const dogsByCustomer = dogsResult.rows.reduce(
+        (acc: Record<number, Dog[]>, dog: Dog) => {
+          if (!acc[dog.customer_id]) {
+            acc[dog.customer_id] = []
+          }
 
-
-        dog.previous_service = dog.services.length > 0 ?dog.services[0].service_date + dog.services[0].service : null
-        dog.previous_price = dog.services.length > 0 ? dog.services[0].service_price : null
-        console.log("dog.services.length", dog.previous_service)
-        acc[dog.customer_id].push(dog)
-        return acc
-      }, {})
+          dog.previous_service =
+            dog.services.length > 0
+              ? dog.services[0].service_date + dog.services[0].service
+              : null
+          dog.previous_price =
+            dog.services.length > 0 ? dog.services[0].service_price : null
+          
+          acc[dog.customer_id].push(dog)
+          return acc
+        },
+        {},
+      )
 
       // Add dogs to each customer
       customers.forEach((customer: Customer) => {
         customer.dogs = dogsByCustomer[customer.id] || []
       })
     }
-    console.log("Customers found:", customers, customers.dogs)
-    console.log("Dogs found:", customers.map(c => c.dogs))
+    
+
     return NextResponse.json({
       success: true,
       data: customers,
     })
   } catch (error) {
-    console.error("Error searching customers:", error)
+    console.error('Error searching customers:', error)
     return NextResponse.json(
       {
         success: false,
-        error: "Failed to search customers",
+        error: 'Failed to search customers',
       },
       { status: 500 },
     )
@@ -114,25 +121,34 @@ export async function GET(request: NextRequest): Promise<NextResponse<ApiRespons
 }
 
 // POST /api/customers - Create a new customer
-export async function POST(request: NextRequest): Promise<NextResponse<ApiResponse<Customer>>> {
+export async function POST(
+  request: NextRequest,
+): Promise<NextResponse<ApiResponse<Customer>>> {
   try {
     const body = await request.json()
-    const { name, phone, customerNote, dogs } = body
+    const { name, first_name, last_name, email, phone, customerNote, dogs } =
+      body
 
     // Start a transaction
     const client = await pool.connect()
     try {
-      await client.query("BEGIN")
+      await client.query('BEGIN')
 
       // Create customer
       const customerResult = await client.query(
         `INSERT INTO grooming.customers 
-        (customer_name, customer_active, customer_note, updated_at) 
-        VALUES ($1, TRUE, $2, CURRENT_TIMESTAMP) 
+        (customer_name, customer_first_name, customer_last_name, customer_email, customer_active, customer_note, updated_at) 
+        VALUES ($1, $2, $3, $4, TRUE, $5, CURRENT_TIMESTAMP) 
         RETURNING *`,
-        [name, customerNote || ""],
+        [
+          name,
+          first_name || null,
+          last_name || null,
+          email || null,
+          customerNote || '',
+        ],
       )
-      
+
       const customer = customerResult.rows[0]
 
       if (Array.isArray(phone) && phone.length > 0) {
@@ -144,20 +160,26 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApiRespon
         }
       }
 
-
       // Create dogs if provided
       if (dogs && Array.isArray(dogs) && dogs.length > 0) {
         for (const dog of dogs) {
           await client.query(
             `INSERT INTO grooming.dogs 
-            (customer_id, dog_name, dog_breed, dog_note) 
-            VALUES ($1, $2, $3, $4)`,
-            [customer.id, dog.name, dog.breed, dog.note],
+            (customer_id, dog_name, dog_breed, dog_note, dog_weight, behavior_profile) 
+            VALUES ($1, $2, $3, $4, $5, $6)`,
+            [
+              customer.id,
+              dog.name,
+              dog.breed,
+              dog.note,
+              dog.weight || null,
+              JSON.stringify(dog.behaviorProfile || {}),
+            ],
           )
         }
       }
 
-      await client.query("COMMIT")
+      await client.query('COMMIT')
 
       // Get the complete customer with dogs
       const result = await pool.query(
@@ -177,20 +199,20 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApiRespon
       return NextResponse.json({
         success: true,
         data: result.rows[0],
-        message: "Customer created successfully",
+        message: 'Customer created successfully',
       })
     } catch (error) {
-      await client.query("ROLLBACK")
+      await client.query('ROLLBACK')
       throw error
     } finally {
       client.release()
     }
   } catch (error) {
-    console.error("Error creating customer:", error)
+    console.error('Error creating customer:', error)
     return NextResponse.json(
       {
         success: false,
-        error: "Failed to create customer",
+        error: 'Failed to create customer',
       },
       { status: 500 },
     )

@@ -1,13 +1,13 @@
-import { type NextRequest, NextResponse } from "next/server"
-import pool from "@/lib/db"
+import { type NextRequest, NextResponse } from 'next/server'
+import pool from '@/lib/db'
 
 // GET /api/customer-management/customers - 獲取客戶列表
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
-    const search = searchParams.get("search")
-    const page = Number.parseInt(searchParams.get("page") || "1")
-    const limit = Number.parseInt(searchParams.get("limit") || "20")
+    const search = searchParams.get('search')
+    const page = Number.parseInt(searchParams.get('page') || '1')
+    const limit = Number.parseInt(searchParams.get('limit') || '20')
     const offset = (page - 1) * limit
 
     let query = `
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
       LEFT JOIN grooming.customer_phones cp ON c.id = cp.customer_id
       LEFT JOIN grooming.dogs d ON c.id = d.customer_id
       WHERE c.customer_active = true
-    `;
+    `
 
     const countParams = []
     if (search && search.length >= 2) {
@@ -81,9 +81,9 @@ export async function GET(request: NextRequest) {
 
     const countResult = await pool.query(countQuery, countParams)
     const total_customers = Number.parseInt(countResult.rows[0].total_customers)
-    const total_dogs_across_customers = Number.parseInt(countResult.rows[0].total_dogs_across_customers)
-    console.log("Total countResult:", countResult)
-    console.log("result:",  result.rows)
+    const total_dogs_across_customers = Number.parseInt(
+      countResult.rows[0].total_dogs_across_customers,
+    )
 
     return NextResponse.json({
       success: true,
@@ -100,8 +100,11 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
-    console.error("Error fetching customers:", error)
-    return NextResponse.json({ success: false, error: "Failed to fetch customers" }, { status: 500 })
+    console.error('Error fetching customers:', error)
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch customers' },
+      { status: 500 },
+    )
   }
 }
 
@@ -113,7 +116,7 @@ export async function POST(request: NextRequest) {
 
     const client = await pool.connect()
     try {
-      await client.query("BEGIN")
+      await client.query('BEGIN')
 
       // 創建客戶
       const customerResult = await client.query(
@@ -131,7 +134,13 @@ export async function POST(request: NextRequest) {
             `INSERT INTO grooming.customer_phones 
              (customer_id, phone_owner, phone, phone_type, is_primary)
              VALUES ($1, $2, $3, $4, $5)`,
-            [customer.id, phone.phone_owner, phone.phone, phone.phone_type, phone.is_primary],
+            [
+              customer.id,
+              phone.phone_owner,
+              phone.phone,
+              phone.phone_type,
+              phone.is_primary,
+            ],
           )
         }
       }
@@ -148,21 +157,24 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      await client.query("COMMIT")
+      await client.query('COMMIT')
 
       return NextResponse.json({
         success: true,
         data: customer,
-        message: "Customer created successfully",
+        message: 'Customer created successfully',
       })
     } catch (error) {
-      await client.query("ROLLBACK")
+      await client.query('ROLLBACK')
       throw error
     } finally {
       client.release()
     }
   } catch (error) {
-    console.error("Error creating customer:", error)
-    return NextResponse.json({ success: false, error: "Failed to create customer" }, { status: 500 })
+    console.error('Error creating customer:', error)
+    return NextResponse.json(
+      { success: false, error: 'Failed to create customer' },
+      { status: 500 },
+    )
   }
 }

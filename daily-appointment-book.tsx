@@ -20,7 +20,6 @@ import {
   History,
   AlertTriangle,
   ArrowLeftRight,
-  CalendarClock,
 } from 'lucide-react'
 import { format, set } from 'date-fns'
 import 'dotenv/config'
@@ -39,6 +38,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
+import ServiceHistoryCard from '@/components/service-history-card'
 import {
   Select,
   SelectContent,
@@ -47,11 +47,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -84,8 +79,13 @@ import {
   getDateMarking,
   saveDateMarking,
   deleteDateMarking,
+  getTimeSlots,
+  createTimeSlot,
+  deleteTimeSlot,
 } from '@/lib/api-client'
 import { on } from 'events'
+import { formatDisplayName } from './lib/helper'
+import { CustomerDetailDialog } from './components/customer-management-detail-dialog'
 
 interface ServiceHistory {
   id: string
@@ -104,12 +104,17 @@ interface Appointment {
   dogName: string
   dogId: string
   phone: string
+  breed?: string
+  dogAppearance?: string
+  dogWeight?: number | null
+  dogNote?: string
   customerNote: string
   todaysNote: string
   previousServices: string
   previousPrice: string
   todaysServices: string
   todaysPrice: string
+  behavioralIssues?: Record<string, any>[]
   status: 'no-status' | 'C' | 'F' | 'FN' | 'P' | 'x'
 }
 
@@ -188,17 +193,20 @@ export default function DailyAppointmentBook() {
   const [isSettingsDialogOpen, setIsSettingsDialogOpen] = useState(false)
   const [isDogDetailDialogOpen, setIsDogDetailDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isCustomerDetailDialogOpen, setIsCustomerDetailDialogOpen] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerData | null>(
-    null
+    null,
   )
   const [appointmentToDelete, setAppointmentToDelete] = useState<string | null>(
-    null
+    null,
   )
   const [editingAppointment, setEditingAppointment] = useState<string | null>(
-    null
+    null,
   )
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>('')
+  const [selectedApiTimeSlots, setSelectedApiTimeSlots] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [apiTimeSlots, setApiTimeSlots] = useState<any[]>([])
 
   const [holidaySet, setHolidaySet] = useState<Set<string>>(new Set())
   const [dateMarking, setDateMarking] = useState<
@@ -213,9 +221,7 @@ export default function DailyAppointmentBook() {
   for (let hour = 8; hour <= 17; hour++) {
     for (let minute = 0; minute < 60; minute += 30) {
       if (hour === 20 && minute > 0) break
-      const timeString = `${hour.toString().padStart(2, '0')}:${minute
-        .toString()
-        .padStart(2, '0')}`
+      const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`
       timeSlots.push(timeString)
     }
   }
@@ -223,19 +229,17 @@ export default function DailyAppointmentBook() {
   const dateKey = format(selectedDate, 'yyyy-MM-dd')
   let currentDayData = dayData[dateKey] || { appointments: [], dailyNote: '' }
 
-  console.log('Current day data:', currentDayData)
-  console.log(' dayData:', dayData)
-  console.log('setAvailabilityRules', availabilityRules)
 
   const loadAllData = async () => {
     setIsLoading(true)
     const dateKey = format(selectedDate, 'yyyy-MM-dd')
 
     try {
-      const [appointments, dailyNote, rules] = await Promise.all([
+      const [appointments, dailyNote, rules, bookingSlots] = await Promise.all([
         getAppointmentsByDate(selectedDate),
         getDailyNotes(selectedDate),
         getAvailabilityRules(),
+        getTimeSlots(selectedDate),
       ])
 
       setDayData((prev) => ({
@@ -245,6 +249,7 @@ export default function DailyAppointmentBook() {
           dailyNote,
         },
       }))
+      setApiTimeSlots(Array.isArray(bookingSlots) ? bookingSlots : [])
       setAvailabilityRules(rules)
     } catch (error) {
       console.error('Error loading data:', error)
@@ -253,8 +258,22 @@ export default function DailyAppointmentBook() {
     }
   }
 
+  const fetchBookingSlots = async () => {
+    try {
+      const slots = await getTimeSlots(selectedDate)
+      setApiTimeSlots(Array.isArray(slots) ? slots : [])
+    } catch (err) {
+      console.error('Failed to load time slots', err)
+      setApiTimeSlots([])
+    }
+  }
+
   useEffect(() => {
     loadAllData()
+  }, [selectedDate])
+
+  useEffect(() => {
+    fetchBookingSlots()
   }, [selectedDate])
 
   //get australia Holidays
@@ -266,18 +285,16 @@ export default function DailyAppointmentBook() {
     async function fetchHolidays() {
       const year = selectedDate?.getFullYear() ?? new Date().getFullYear()
       const res = await fetch(
-        `https://date.nager.at/api/v3/PublicHolidays/${year}/AU`
+        `https://date.nager.at/api/v3/PublicHolidays/${year}/AU`,
       )
       const data = await res.json()
       const vicHolidays = data.filter(
         (item: any) =>
           item.counties === null ||
-          (item.counties && item.counties.includes('AU-VIC'))
+          (item.counties && item.counties.includes('AU-VIC')),
       )
       const holidayDates = vicHolidays.map((item: any) => item.date)
-      console.log('Holidays for data:', data)
-      console.log('Holidays for VIC:', holidayDates)
-      setHolidaySet(new Set(holidayDates))
+       setHolidaySet(new Set(holidayDates))
     }
     fetchHolidays()
   }, [])
@@ -285,7 +302,6 @@ export default function DailyAppointmentBook() {
   useEffect(() => {
     async function fetchMarkingDates() {
       const res = await getDateMarking() // 你的後端 API
-      console.log('Fetched marking dates:', res)
       const dateMarkingMap = new Map<
         string,
         'blue' | 'red' | 'yellow' | 'green'
@@ -299,33 +315,23 @@ export default function DailyAppointmentBook() {
             : 'yellow', // value
         ])
       )
-      console.log('Fetched marking dates:', dateMarkingMap)
       setDateMarking(dateMarkingMap)
     }
     fetchMarkingDates()
   }, [])
 
+  
   const handleAddAppointment = async (
-    appointmentData: Omit<AppointmentData, 'id'>
+    appointmentData: Omit<AppointmentData, 'id'>,
   ) => {
     try {
-      const newAppointment = await createAppointment(appointmentData)
-      console.log('Appointment created:', newAppointment)
-      // const newAppointmentId = response.appointmentDetail[0].id;
-      // console.log("New appointment created:", newAppointmentId)
-      // const newAppointment = getAppointmentById(newAppointmentId)
-      // console.log("New appointment details:", newAppointment)
+      await createAppointment(appointmentData)
+      // refresh from server so appointments and slots are consistent
+      await loadAllData()
 
-      setDayData((prev) => ({
-        ...prev,
-        [dateKey]: {
-          ...currentDayData,
-          appointments: [
-            ...currentDayData.appointments,
-            newAppointment.appointmentDetail[0],
-          ],
-        },
-      }))
+      // also refresh time slots so available count updates
+      const slots = await getTimeSlots(selectedDate)
+      setApiTimeSlots(Array.isArray(slots) ? slots : [])
 
       setIsAppointmentDialogOpen(false)
       setSelectedTimeSlot('')
@@ -336,7 +342,7 @@ export default function DailyAppointmentBook() {
 
   const handleUpdateAppointment = async (
     appointmentId: string,
-    changes: Partial<AppointmentData>
+    changes: Partial<AppointmentData>,
   ) => {
     try {
       const response = await updateAppointment(appointmentId, changes)
@@ -344,7 +350,7 @@ export default function DailyAppointmentBook() {
       setDayData((prev) => {
         const updatedAppointments =
           prev[dateKey]?.appointments.map((apt) =>
-            apt.id === appointmentId ? { ...apt, ...changes } : apt
+            apt.id === appointmentId ? { ...apt, ...changes } : apt,
           ) || []
 
         return {
@@ -360,19 +366,15 @@ export default function DailyAppointmentBook() {
     }
   }
 
-  const handleDeleteAppointment = async (appointmentId: string) => {
+  const handleDeleteAppointment = async (appointmentId: string , selectedTimeSlot?: string) => {
     try {
-      // Call API to delete appointment
-      await deleteAppointment(appointmentId)
-      setDayData((prev) => ({
-        ...prev,
-        [dateKey]: {
-          ...currentDayData,
-          appointments: currentDayData.appointments.filter(
-            (apt) => apt.id !== appointmentId
-          ),
-        },
-      }))
+      
+      const promises = [deleteAppointment(appointmentId)]
+      if (selectedTimeSlot) {
+        promises.push(deleteTimeSlot(selectedTimeSlot))
+      }
+      await Promise.all(promises)
+      loadAllData() // Refresh data after deletion
       setIsDeleteDialogOpen(false)
       setAppointmentToDelete(null)
     } catch (error) {
@@ -401,13 +403,17 @@ export default function DailyAppointmentBook() {
     return currentDayData.appointments.filter((apt) => apt.time === time)
   }
 
-  const openAddDialog = (time: string) => {
+  const openAddDialog = (time: string, selectedApiTimeSlots: string) => {
+    
     setSelectedTimeSlot(time)
+    setSelectedApiTimeSlots(selectedApiTimeSlots)
     setIsAppointmentDialogOpen(true)
   }
 
-  const openDeleteDialog = (appointmentId: string) => {
+  const openDeleteDialog = (appointmentId: string , selectedTimeSlot?: string) => {
     setAppointmentToDelete(appointmentId)
+    
+    setSelectedTimeSlot(selectedTimeSlot) // Reset selected time slot when opening delete dialog
     setIsDeleteDialogOpen(true)
   }
 
@@ -417,7 +423,7 @@ export default function DailyAppointmentBook() {
       (c) =>
         c.phone === appointment.phone ||
         (c.name === appointment.customerName &&
-          c.dogName === appointment.dogName)
+          c.dogName === appointment.dogName),
     )
     if (appointment) {
       setSelectedCustomer(appointment)
@@ -451,7 +457,7 @@ export default function DailyAppointmentBook() {
   const handleAddMarkingDate = async (
     date: Date | number,
     type: string = 'specific',
-    color: string = 'yellow'
+    color: string = 'yellow',
   ) => {
     if (!date) return
 
@@ -478,7 +484,7 @@ export default function DailyAppointmentBook() {
 
   const handleUnmarkDate = async (
     date: Date | number,
-    type: string = 'specific'
+    type: string = 'specific',
   ) => {
     const formatted = format(date, 'yyyy-MM-dd')
     const res = await deleteDateMarking(formatted)
@@ -495,7 +501,7 @@ export default function DailyAppointmentBook() {
 
   const markAvailableAppointmentDate = (
     date: Date,
-    availabilityRules: any[]
+    availabilityRules: any[],
   ): boolean => {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -567,7 +573,7 @@ export default function DailyAppointmentBook() {
                         handleAddMarkingDate(
                           selectedDate,
                           'specific',
-                          selectedColor
+                          selectedColor,
                         )
                       }
                     >
@@ -576,33 +582,19 @@ export default function DailyAppointmentBook() {
                     </Button>
                     <div className="flex gap-1 ml-2">
                       <button
-                        className={`w-4 h-4 rounded-full border ${
-                          selectedColor === 'blue'
-                            ? 'bg-blue-400'
-                            : 'bg-blue-200'
-                        }`}
+                        className={`w-4 h-4 rounded-full border ${selectedColor === 'blue' ? 'bg-blue-400' : 'bg-blue-200'}`}
                         onClick={() => setSelectedColor('blue')}
                       />
                       <button
-                        className={`w-4 h-4 rounded-full border ${
-                          selectedColor === 'red' ? 'bg-red-400' : 'bg-red-200'
-                        }`}
+                        className={`w-4 h-4 rounded-full border ${selectedColor === 'red' ? 'bg-red-400' : 'bg-red-200'}`}
                         onClick={() => setSelectedColor('red')}
                       />
                       <button
-                        className={`w-4 h-4 rounded-full border ${
-                          selectedColor === 'green'
-                            ? 'bg-green-400'
-                            : 'bg-green-100'
-                        }`}
+                        className={`w-4 h-4 rounded-full border ${selectedColor === 'green' ? 'bg-green-400' : 'bg-green-100'}`}
                         onClick={() => setSelectedColor('green')}
                       />
                       <button
-                        className={`w-4 h-4 rounded-full border ${
-                          selectedColor === 'yellow'
-                            ? 'bg-yellow-400'
-                            : 'bg-yellow-200'
-                        }`}
+                        className={`w-4 h-4 rounded-full border ${selectedColor === 'yellow' ? 'bg-yellow-400' : 'bg-yellow-200'}`}
                         onClick={() => setSelectedColor('yellow')}
                       />
                     </div>
@@ -697,18 +689,38 @@ export default function DailyAppointmentBook() {
           <div className="grid gap-3">
             {timeSlots.map((time) => {
               const appointments = getAppointmentsForTime(time)
-              const isAvailable = isTimeSlotAvailable(time, selectedDate)
+              const apiSlot = apiTimeSlots.filter((s) => s.time === time)
+              
+              const isAvailable = apiSlot
+                ? apiSlot.availableCount > 0
+                : isTimeSlotAvailable(time, selectedDate)
+
+              const totalAvailable =
+                apiSlot?.reduce((sum, slot) => sum + slot.availableCount, 0) ??
+                0
+
+              const onlineAvailable =
+                apiSlot?.reduce(
+                  (sum, slot) =>
+                    slot.slotType === 'any' ||
+                    slot.slotType === 'for_online_small' ||
+                    slot.slotType === 'for_online_large'
+                      ? sum + slot.availableCount
+                      : sum,
+                  0,
+                ) ?? 0
 
               return (
                 <div
                   key={time}
+                  data-slot-id={apiSlot?.id}
                   className={cn(
                     'flex-col items-start justify-between p-2 sm:p-4 border rounded-lg transition-colors',
                     appointments.length > 0
                       ? 'bg-blue-50 border-blue-200'
                       : isAvailable
-                      ? 'bg-green-50 border-green-200 hover:bg-green-100'
-                      : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                        ? 'bg-green-50 border-green-200 hover:bg-green-100'
+                        : 'bg-gray-50 border-gray-200 hover:bg-gray-100',
                   )}
                 >
                   <div className="flex items-start gap-4 flex-1">
@@ -716,31 +728,36 @@ export default function DailyAppointmentBook() {
                       variant="outline"
                       className={cn(
                         'font-mono mt-1 text-sm',
-                        isAvailable && 'bg-green-100'
+                        isAvailable && 'bg-green-100',
                       )}
                     >
-                      {time}
+                      {time}{' '}
+                      {totalAvailable > 0 &&
+                        `· ${totalAvailable} total (${onlineAvailable} online)`}
                     </Badge>
                     <Button
                       size="sm"
                       variant="ghost"
                       className="flex items-start justify-end gap-4 flex-1"
-                      onClick={() => openAddDialog(time)}
+                      onClick={() => openAddDialog(time, '0')}
                     >
                       <Plus className="h-4 w-4" />
                     </Button>
                   </div>
                   <div className="flex items-start gap-4 flex-1">
                     <div className="flex-1">
-                      {appointments.length > 0 ? (
-                        <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                          {appointments.map((appointment) => {
-                            const statusConfig = getStatusConfig(
-                              appointment.status
-                            )
-                            return (
+                      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                        {/* Appointments first */}
+                        {appointments.map((appointment) => {
+                          const statusConfig = getStatusConfig(
+                            appointment.status,
+                          )
+                          return (
+                            <div
+                              key={appointment.id}
+                              className="time-slot-booking"
+                            >
                               <AppointmentCard
-                                key={appointment.id}
                                 appointment={appointment}
                                 statusConfig={statusConfig}
                                 isEditing={
@@ -752,24 +769,79 @@ export default function DailyAppointmentBook() {
                                 onSave={() => setEditingAppointment(null)}
                                 onCancel={() => setEditingAppointment(null)}
                                 onDelete={() =>
-                                  openDeleteDialog(appointment.id)
+                                  openDeleteDialog(appointment.id, appointment.appointmentslotId)
                                 }
                                 onUpdate={handleUpdateAppointment}
                                 onClick={() =>
                                   handleAppointmentClick(appointment)
                                 }
-                                reLoadPage={loadAllData}
                               />
-                            )
-                          })}
-                        </div>
-                      ) : (
-                        <span className="text-gray-500 text-sm">
-                          {isAvailable
-                            ? 'Available for booking'
-                            : 'Not available'}
-                        </span>
-                      )}
+                            </div>
+                          )
+                        })}
+
+                        {/* Booking placeholder slots after appointments */}
+
+                        {apiSlot && apiSlot.length > 0 && (
+                          <>
+                            {apiSlot.map((slot) =>
+                              Array.from({ length: slot.availableCount }).map(
+                                (_, index) => {
+                                  const isOnline =
+                                    slot.slotType === 'any' ||
+                                    slot.slotType === 'for_online_small' ||
+                                    slot.slotType === 'for_online_large'
+
+                                  return (
+                                    <button
+                                      key={`slot-placeholder-${slot.id}-${index}`}
+                                      onClick={() =>
+                                        openAddDialog(slot.time, slot.id)
+                                      }
+                                      className={cn(
+                                        'p-3 border-2 border-dashed rounded-lg flex flex-col items-center justify-center transition-colors cursor-pointer',
+                                        isOnline
+                                          ? 'border-blue-300 hover:bg-blue-50'
+                                          : 'border-green-300 hover:bg-green-50',
+                                      )}
+                                      title={`Click to add booking for slot ${slot.time}`}
+                                    >
+                                      <Plus
+                                        className={cn(
+                                          'h-5 w-5',
+                                          isOnline
+                                            ? 'text-blue-600'
+                                            : 'text-green-600',
+                                        )}
+                                      />
+                                      <span
+                                        className={cn(
+                                          'mt-1 text-xs font-medium',
+                                          slot.slotType.includes('online') ? 'text-blue-600' : 'text-green-600'
+                                        )}
+                                      >
+                                        {slot.slotType}
+                                      </span>
+                                    </button>
+                                  )
+                                },
+                              ),
+                            )}
+                          </>
+                        )}
+
+                        {/* Empty state */}
+                        {appointments.length === 0 &&
+                          (!apiSlot || apiSlot.availableCount === 0) && (
+                            <div className="col-span-3">
+                              <span className="text-gray-500 text-sm">
+                                {isAvailable
+                                  ? 'Available for booking'
+                                  : 'Not available'}
+                              </span>
+                            </div>
+                          )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -786,8 +858,10 @@ export default function DailyAppointmentBook() {
           setIsAppointmentDialogOpen(false)
           setSelectedTimeSlot('')
         }}
+        fetchBookingSlots={fetchBookingSlots}
         onSave={handleAddAppointment}
         timeSlot={selectedTimeSlot}
+        apiTimeSlots={selectedApiTimeSlots}
         customers={customers}
         date={format(selectedDate, 'yyyy-MM-dd')}
       />
@@ -834,7 +908,7 @@ export default function DailyAppointmentBook() {
             <AlertDialogAction
               onClick={() =>
                 appointmentToDelete &&
-                handleDeleteAppointment(appointmentToDelete)
+                handleDeleteAppointment(appointmentToDelete, selectedTimeSlot)
               }
               className="bg-red-500 hover:bg-red-600"
             >
@@ -858,7 +932,7 @@ interface AppointmentCardProps {
   onUpdate: (
     appointmentId: string,
     field: keyof Appointment,
-    value: string
+    value: string,
   ) => void
   onClick: () => void
 }
@@ -873,14 +947,18 @@ function AppointmentCard({
   onDelete,
   onUpdate,
   onClick,
-  reLoadPage
 }: AppointmentCardProps) {
-  const [editData, setEditData] = useState(appointment)
+  const [editData, setEditData] = useState({
+    ...appointment,
+    dogWeight: appointment.dogWeight || null,
+    behavioralIssues: appointment.behavioralIssues || [],
+  })
   const [phoneError, setPhoneError] = useState('')
   const [formData, setFormData] = useState({
     customerId: '',
     dogId: '',
     customerName: '',
+    customerEmail: '',
     customerPhone: '',
     customerNote: '',
     dogName: '',
@@ -893,13 +971,19 @@ function AppointmentCard({
   const [isCustomerCreateDialogOpen, setIsCustomerCreateDialogOpen] =
     useState(false)
   const [isDogCreateDialogOpen, setIsDogCreateDialogOpen] = useState(false)
-  const displayName =
-    (appointment.appointmentCustomerName
-      ? `${appointment.appointmentCustomerName} - ${appointment.appointmentDogName}`
-      : appointment.appointmentDogName) || 'Unnamed'
+  const rawName = appointment.appointmentCustomerName
+    ? `${appointment.appointmentCustomerName} - ${appointment.appointmentDogName}`
+    : appointment.appointmentDogName || 'Unnamed'
+
+  // 先全小寫，再處理每個單字首字母大寫
+  const displayName = formatDisplayName(rawName)
 
   useEffect(() => {
-    setEditData(appointment)
+    setEditData({
+      ...appointment,
+      dogWeight: appointment.dogWeight || null,
+      behavioralIssues: appointment.behavioralIssues || [],
+    })
     setPhoneError('')
   }, [appointment])
 
@@ -909,11 +993,13 @@ function AppointmentCard({
         customerId: '',
         dogId: '',
         customerName: editData.appointmentCustomerName || '',
+        customerEmail: appointment.customerEmail || '',
         customerPhone: editData.phone || '',
         customerNote: editData.customerNote || '',
         dogName: editData.appointmentDogName || '',
         dogNote: editData.dogNote || '',
         breed: editData.breed || '',
+        dogAppearance: editData.dogAppearance || '',
         todaysNote: editData.todaysNote || '',
         appointmentId: editData.id,
         state: editData.status,
@@ -922,6 +1008,7 @@ function AppointmentCard({
   }, [isCustomerCreateDialogOpen, isDogCreateDialogOpen])
 
   const handleSave = async () => {
+    
     if (editData.phone && !validatePhone(String(editData.phone))) {
       setPhoneError('Phone must be 8 or 10 digits')
       return
@@ -941,7 +1028,7 @@ function AppointmentCard({
     })
 
     if (Object.keys(appointmentChanges).length > 0) {
-      console.log('Changes to save:', appointmentChanges)
+      
       await onUpdate(appointment.id, appointmentChanges)
     }
 
@@ -980,6 +1067,7 @@ function AppointmentCard({
         name: formData.customerName,
         phone: formData.customerPhone,
         customerNote: formData.customerNote,
+        customerEmail: formData.customerEmail,
       }
       const { id: customerId } = await createCustomer(createdCustomerData)
 
@@ -988,6 +1076,7 @@ function AppointmentCard({
         customerId,
         customerName: formData.customerName,
         customerNote: formData.customerNote,
+        customerEmail: formData.customerEmail,
       }
 
       onUpdate(formData.appointmentId, { customerId: customerId })
@@ -1013,6 +1102,7 @@ function AppointmentCard({
       appointment.dogId = dogId
 
       onUpdate(formData.appointmentId, { dogId: dogId })
+      // After dog is created, update appointment status to 'P' to update the history record and trigger any related logic
       onUpdate(formData.appointmentId, { status: 'P' })
       setIsDogCreateDialogOpen(false)
     } catch (error) {
@@ -1061,125 +1151,6 @@ function AppointmentCard({
             ))}
           </div>
         )}
-      </div>
-    )
-  }
-
-  interface ResearchduleCalenderProps {
-    onSubmit: (date: Date, time: string) => void
-    onCancel: () => void
-    reLoadPage: () => void
-  }
-
-  const ResearchduleCalender = ({
-    onSubmit,
-    onCancel,
-    reLoadPage,
-  }: ResearchduleCalenderProps) => {
-    const [open, setOpen] = useState(false)
-    const [selectedDate, setSelectedDate] = useState<Date | null>(null)
-    const [selectedTime, setSelectedTime] = useState<string | null>(null)
-    console.log('editData1', editData)
-
-    const handleSave = async () => {
-      if (selectedDate && selectedTime) {
-        const formattedDate = format(selectedDate, "yyyy-MM-dd");
-        console.log('editData', editData)
-        await updateAppointment(editData.id, {
-          date: format(selectedDate, 'yyyy-MM-dd'),
-          time: selectedTime,
-        })
-        
-        
-        reLoadPage()
-        console.log('Selected Date and Time:', selectedDate, selectedTime)
-        setOpen(false)
-      } else {
-        alert('請先選日期與時間')
-      }
-    }
-
-    return (
-      <div>
-        {/* reschedule button*/}
-        <Popover
-          open={open}
-          onOpenChange={(nextOpen) => {
-            setOpen(nextOpen)
-            if (!nextOpen) onCancel?.()
-          }}
-        >
-          <PopoverTrigger asChild>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="hover:shadow-md"
-              onClick={(e) => {
-                e.stopPropagation()
-              }}
-            >
-              <CalendarClock className="h-2 w-2" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent
-            className="w-80 space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* 日期選擇 */}
-            <div>
-              <p className="font-medium mb-2">Day to Reschedule</p>
-              <Calendar
-                mode="single"
-                selected={selectedDate ?? undefined}
-                onSelect={setSelectedDate}
-              />
-            </div>
-
-            {/* 時間選擇 */}
-            <div>
-              <p className="font-medium mb-2">Time</p>
-              <Select
-                onValueChange={setSelectedTime}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="please select time" />
-                </SelectTrigger>
-                <SelectContent>
-                  {[
-                    '09:30',
-                    '10:00',
-                    '10:30',
-                    '11:00',
-                    '11:30',
-                    '12:00',
-                    '12:30',
-                    '13:00',
-                    '13:30',
-                    '14:00',
-                    '14:30',
-                    '15:00',
-                    '15:30',
-                    '16:00',
-                  ].map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* reschedule button */}
-            <Button onClick={()=>{
-              const formatted = selectedDate ? format(selectedDate, "yyyy-MM-dd") : null;
-              setEditData((prev) => ({ ...prev, date: formatted, time: selectedTime || "" })); 
-              handleSave()
-              }}
-              className="w-full">
-              Reschedule
-            </Button>
-          </PopoverContent>
-        </Popover>
       </div>
     )
   }
@@ -1246,6 +1217,20 @@ function AppointmentCard({
               />
             </div>
             <div>
+              <Label className="text-xs">Dog Appearance</Label>
+              <Input
+                value={editData.dogAppearance || ''}
+                onChange={(e) =>
+                  setEditData((prev) => ({
+                    ...prev,
+                    dogAppearance: e.target.value,
+                  }))
+                }
+                placeholder="brown and white spots"
+                className="text-sm"
+              />
+            </div>
+            <div>
               <Label className="text-xs">Phone</Label>
               <Input
                 value={editData.phone}
@@ -1286,6 +1271,73 @@ function AppointmentCard({
                 }
                 className="h-8 text-sm"
               />
+            </div>
+            <div>
+              <Label className="text-xs">Dog Weight (kg)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={editData.dogWeight || ''}
+                onChange={(e) =>
+                  setEditData((prev) => ({
+                    ...prev,
+                    dogWeight: e.target.value
+                      ? parseFloat(e.target.value)
+                      : null,
+                  }))
+                }
+                className="h-8 text-sm"
+                placeholder="e.g. 15.5"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Behavioral Issues</Label>
+
+              {editData.behavioralIssues?.map((issue, index) => (
+                <div key={index} className="flex gap-2 mb-2">
+                  <Input
+                    value={issue}
+                    onChange={(e) => {
+                      const updated = [...editData.behavioralIssues]
+                      updated[index] = e.target.value
+                      setEditData((prev) => ({
+                        ...prev,
+                        behavioralIssues: updated,
+                      }))
+                    }}
+                    className="text-sm"
+                  />
+
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      const updated = editData.behavioralIssues.filter(
+                        (_, i) => i !== index,
+                      )
+                      setEditData((prev) => ({
+                        ...prev,
+                        behavioralIssues: updated,
+                      }))
+                    }}
+                  >
+                    ✕
+                  </Button>
+                </div>
+              ))}
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  setEditData((prev) => ({
+                    ...prev,
+                    behavioralIssues: [...(prev.behavioralIssues || []), ''],
+                  }))
+                }
+              >
+                + Add Issue
+              </Button>
             </div>
           </div>
 
@@ -1339,7 +1391,7 @@ function AppointmentCard({
     <div
       className={cn(
         'p-3 border rounded-lg cursor-pointer hover:shadow-md transition-shadow overflow-x-auto [scrollbar-gutter:stable]',
-        statusConfig.color
+        statusConfig.color,
       )}
       onClick={onClick}
     >
@@ -1372,7 +1424,6 @@ function AppointmentCard({
           >
             <Trash2 className="h-3 w-3" />
           </Button>
-          <ResearchduleCalender onSubmit={handleSave} onCancel={onCancel} reLoadPage={reLoadPage} />
         </div>
       </div>
 
@@ -1387,6 +1438,14 @@ function AppointmentCard({
         <div className="break-words whitespace-normal">
           <span className="font-medium">Breed:</span> {appointment.breed}
         </div>
+
+        {/* Dog Appearance */}
+        {appointment.dogAppearance && (
+          <div className="col-span-2 break-words whitespace-normal">
+            <span className="font-medium">Appearance:</span>{' '}
+            {appointment.dogAppearance}
+          </div>
+        )}
 
         {/* Previous Services Reference */}
         <div className="space-y-2">
@@ -1411,6 +1470,36 @@ function AppointmentCard({
             {appointment.todaysPrice}
           </div>
         </div>
+
+        {/* Dog Weight */}
+        {appointment.dogWeight && (
+          <div>
+            <span className="font-medium">Dog Weight:</span>{' '}
+            {appointment.dogWeight} kg
+          </div>
+        )}
+
+        {/* Behavioral Issues */}
+        {appointment.behavioralIssues &&
+          appointment.behavioralIssues.length > 0 && (
+            <div className="mt-2 p-2 rounded bg-red-50 border border-red-200">
+              <div className="font-medium text-red-700 mb-1">
+                Behavioral Issues:
+              </div>
+
+              <div className="space-y-1 text-sm text-red-800">
+                {appointment.behavioralIssues.map((issue, index) => (
+                  <div key={index} className="px-2 py-1 rounded bg-red-100">
+                    {typeof issue === 'string'
+                      ? issue
+                      : issue.notes
+                        ? issue.notes
+                        : JSON.stringify(issue)}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
       </div>
 
       {(appointment.todaysNote || appointment.customerNote) && (
@@ -1456,6 +1545,21 @@ function AppointmentCard({
                     }))
                   }
                   placeholder="Optional"
+                />
+              </div>
+              <div>
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={formData.customerEmail}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      customerEmail: e.target.value,
+                    }))
+                  }
+                  placeholder="email@example.com"
                 />
               </div>
               <div className="col-span-2">
@@ -1548,6 +1652,17 @@ function AppointmentCard({
                   <div className="text-sm text-red-500 mt-1">{phoneError}</div>
                 )}
               </div>
+              <div className="col-span-2">
+                <Label htmlFor="dogAppearance">Dog Appearance</Label>
+                <Input
+                  id="dogAppearance"
+                  value={formData.dogAppearance}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, dogAppearance: e.target.value }))
+                  }
+                  placeholder="Dog Appearance"
+                />
+              </div>
               <div>
                 <Label className="text-xs">Dog's Note</Label>
                 <Textarea
@@ -1594,7 +1709,7 @@ function CustomerCard({
   onSelect,
   children,
 }: CustomerCardProps) {
-  console.log('Rendering CustomerCard for customer:', customer)
+  
   return (
     <Card
       className="cursor-pointer hover:bg-gray-50 transition-colors"
@@ -1766,7 +1881,7 @@ function CustomerSearch({ setForm, onSelect, children }: CustomerSearchProps) {
               >
                 {children}
               </CustomerCard>
-            ))
+            )),
           )}
         </div>
       )}
@@ -1778,50 +1893,101 @@ function AppointmentDialog({
   isOpen,
   onClose,
   onSave,
+  fetchBookingSlots,
   timeSlot,
+  apiTimeSlots,
   customers,
   date,
 }: AppointmentDialogProps) {
   const [phoneError, setPhoneError] = useState('')
+  const [activeTab, setActiveTab] = useState<'booking' | 'slot'>('booking')
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
   const [formData, setFormData] = useState({
     quickDetails: '',
     name: '',
     dogName: '',
     phone: '',
+    dogAppearance: '',
     customerNote: '',
     todaysNote: '',
     previousServices: '',
     previousPrice: '',
     todaysServices: '',
     todaysPrice: '',
+    dogWeight: null as number | null,
+    behavioralIssues: [] as Record<string, any>[],
     status: 'no-status' as Appointment['status'],
   })
 
   // Reset form when dialog opens
   useEffect(() => {
     if (isOpen) {
+      setActiveTab('booking')
       setFormData({
         quickDetails: '',
         name: '',
         dogName: '',
         breed: '',
         phone: '',
+        dogAppearance: '',
         customerNote: '',
         todaysNote: '',
         previousServices: '',
         previousPrice: '',
         todaysServices: '',
         todaysPrice: '',
+        dogWeight: null,
+        behavioralIssues: [],
         status: 'no-status',
       })
       setPhoneError('')
     }
   }, [isOpen])
 
+  const [slotForm, setSlotForm] = useState({
+    slot_type: 'small',
+    capacity: 1,
+  })
+
+  const handleCreateSlot = async (e: React.FormEvent) => {
+    e.preventDefault()
+    try {
+      await createTimeSlot({
+        slot_date: date,
+        slot_time: timeSlot,
+        slot_type: slotForm.slot_type,
+        capacity: Number(slotForm.capacity),
+      })
+      fetchBookingSlots()
+      // parent will refetch slots on dialog close via selectedDate effect
+      onClose()
+    } catch (err) {
+      console.error('Failed to create slot', err)
+    }
+  }
+
+  const handleDeleteSlot = async () => {
+    try {
+      // apiTimeSlots 可能是一个數組或單個值
+      const slotId = Array.isArray(apiTimeSlots)
+        ? apiTimeSlots[0]
+        : apiTimeSlots
+        
+
+      if (slotId && slotId !== '0') {
+        await deleteTimeSlot(String(slotId), true)
+        fetchBookingSlots()
+        onClose()
+      }
+    } catch (err) {
+      console.error('Failed to delete slot', err)
+    }
+  }
+
   const handleCustomerSelect = (
     customer: CustomerData,
     dog: DogData,
-    index: number
+    index: number,
   ) => {
     const phoneMatchForAppointment =
       customer.phone.find((p) => p.includes(formData.phone)) || ''
@@ -1835,16 +2001,20 @@ function AppointmentDialog({
       dogId: dog.id,
       breed: dog.breed,
       phone: phoneMatchForAppointment || customer.phone[0],
+      dogAppearance: dog.appearance || '',
       customerNote: customer.customerNote,
       previousServices: dog.previousServices,
       previousPrice: dog.previousPrice,
       todaysServices: dog.previousServices,
       todaysPrice: dog.previousPrice,
+      dogWeight: dog.weight || null,
+      behavioralIssues: dog.behaviorProfile ? [dog.behaviorProfile] : [],
     }))
   }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    
 
     // Validate required dog name
     if (!formData.dogName.trim()) return
@@ -1858,11 +2028,13 @@ function AppointmentDialog({
     onSave({
       date: date,
       time: timeSlot,
+      appointmentSlotId: apiTimeSlots || '0',
       customerId: formData.customerId || '',
       customerName: formData.name,
       dogId: formData.dogId || '',
       dogName: formData.dogName,
       breed: formData.breed,
+      dogAppearance: formData.dogAppearance,
       phone: formData.phone,
       customerNote: formData.customerNote,
       todaysNote: formData.todaysNote,
@@ -1870,6 +2042,8 @@ function AppointmentDialog({
       previousPrice: formData.previousPrice,
       todaysServices: formData.todaysServices,
       todaysPrice: formData.todaysPrice,
+      dogWeight: formData.dogWeight,
+      behavioralIssues: formData.behavioralIssues,
       status: formData.status,
     })
 
@@ -1879,193 +2053,406 @@ function AppointmentDialog({
       dogName: '',
       breed: '',
       phone: '',
+      dogAppearance: '',
       customerNote: '',
       todaysNote: '',
       previousServices: '',
       previousPrice: '',
       todaysServices: '',
       todaysPrice: '',
+      dogWeight: null,
+      behavioralIssues: [],
       status: 'no-status',
     })
   }
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Add Appointment - {timeSlot}</DialogTitle>
-        </DialogHeader>
+    <>
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Add Appointment - {timeSlot}</DialogTitle>
+          </DialogHeader>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Customer Search */}
-          <div className="space-y-4">
-            <CustomerSearch
-              setForm={setFormData}
-              onSelect={handleCustomerSelect}
-            />
-          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Tabs
+              defaultValue={activeTab}
+              onValueChange={(v) => setActiveTab(v as 'booking' | 'slot')}
+            >
+              <TabsList>
+                <TabsTrigger value="booking">Create Booking</TabsTrigger>
+                <TabsTrigger value="slot">
+                  {apiTimeSlots === '0'
+                    ? 'Create Time Slot'
+                    : 'Delete Time Slot'}
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="booking">
+                {/* Customer Search */}
+                <div className="space-y-4">
+                  <CustomerSearch
+                    setForm={setFormData}
+                    onSelect={handleCustomerSelect}
+                  />
+                </div>
 
-          {/* Appointment Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <>
-              {/* Previous Services Reference */}
-              {formData.previousServices && (
-                <div className="p-3 bg-gray-50 rounded border break-words whitespace-normal">
-                  <Label className="text-sm text-gray-600">
-                    Previous Services (Reference)
-                  </Label>
-                  <div className="text-sm text-gray-700">
-                    {formData.previousServices}
+                {/* Appointment Form */}
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <>
+                    {/* Previous Services Reference */}
+                    {formData.previousServices && (
+                      <div className="p-3 bg-gray-50 rounded border break-words whitespace-normal">
+                        <Label className="text-sm text-gray-600">
+                          Previous Services (Reference)
+                        </Label>
+                        <div className="text-sm text-gray-700">
+                          {formData.previousServices}
+                        </div>
+                        {formData.previousPrice && (
+                          <div className="text-sm text-gray-700">
+                            Previous Price: ${formData.previousPrice}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="name">Owner Name</Label>
+                        <Input
+                          id="name"
+                          value={formData.name}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              name: e.target.value,
+                            }))
+                          }
+                          placeholder="Optional"
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <Label htmlFor="phone">Phone</Label>
+                        <Input
+                          id="phone"
+                          value={formData.phone}
+                          onChange={(e) => {
+                            setFormData((prev) => ({
+                              ...prev,
+                              phone: e.target.value,
+                            }))
+                            setPhoneError('')
+                          }}
+                          placeholder="8 or 10 digits"
+                          className={phoneError ? 'border-red-500' : ''}
+                        />
+                        {phoneError && (
+                          <div className="text-sm text-red-500 mt-1">
+                            {phoneError}
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <Label htmlFor="dogName">Dog Name *</Label>
+                        <Input
+                          id="dogName"
+                          value={formData.dogName}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              dogName: e.target.value,
+                            }))
+                          }
+                          placeholder="Required"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="breed">Dog Breed</Label>
+                        <Input
+                          id="breed"
+                          value={formData.breed}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              breed: e.target.value,
+                            }))
+                          }
+                          placeholder="bread"
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <Label htmlFor="dogAppearance">Dog Appearance</Label>
+                        <Textarea
+                          id="dogAppearance"
+                          value={formData.dogAppearance}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              dogAppearance: e.target.value,
+                            }))
+                          }
+                          placeholder="e.g., Golden retriever with brown and white spots, long fur"
+                          rows={2}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Dog Weight and Behavioral Issues */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="dogWeight">Dog Weight (kg)</Label>
+                        <Input
+                          id="dogWeight"
+                          type="number"
+                          step="0.01"
+                          value={formData.dogWeight || ''}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              dogWeight: e.target.value
+                                ? parseFloat(e.target.value)
+                                : null,
+                            }))
+                          }
+                          placeholder="e.g. 15.5"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Behavioral Issues</Label>
+
+                        {(formData.behavioralIssues ?? []).map(
+                          (issue, index) => (
+                            <div key={index} className="flex gap-2 mb-2">
+                              <Input
+                                value={issue}
+                                onChange={(e) => {
+                                  const updated = [
+                                    ...(formData.behavioralIssues ?? []),
+                                  ]
+                                  updated[index] = e.target.value
+
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    behavioralIssues: updated,
+                                  }))
+                                }}
+                                className="text-sm"
+                              />
+
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => {
+                                  const updated = (
+                                    formData.behavioralIssues ?? []
+                                  ).filter((_, i) => i !== index)
+
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    behavioralIssues: updated,
+                                  }))
+                                }}
+                              >
+                                ✕
+                              </Button>
+                            </div>
+                          ),
+                        )}
+
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              behavioralIssues: [
+                                ...(prev.behavioralIssues ?? []),
+                                '',
+                              ],
+                            }))
+                          }
+                        >
+                          + Add Issue
+                        </Button>
+                      </div>
+                    </div>
+                  </>
+
+                  {/* Today's Services and Pricing */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="todaysServices">Today's Services</Label>
+                      <Input
+                        id="todaysServices"
+                        value={formData.todaysServices}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            todaysServices: e.target.value,
+                          }))
+                        }
+                        placeholder="Today's services"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="todaysPrice">Today's Price</Label>
+                      <Input
+                        id="todaysPrice"
+                        type="number"
+                        value={formData.todaysPrice}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            todaysPrice: e.target.value,
+                          }))
+                        }
+                        placeholder="Today's price"
+                      />
+                    </div>
                   </div>
-                  {formData.previousPrice && (
-                    <div className="text-sm text-gray-700">
-                      Previous Price: ${formData.previousPrice}
+
+                  {/* Notes */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="todaysNote">Today's Note</Label>
+                      <Textarea
+                        id="todaysNote"
+                        value={formData.todaysNote}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            todaysNote: e.target.value,
+                          }))
+                        }
+                        placeholder="Notes for today's appointment"
+                        rows={3}
+                      />
                     </div>
-                  )}
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="name">Owner Name</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) =>
-                      setFormData((prev) => ({ ...prev, name: e.target.value }))
-                    }
-                    placeholder="Optional"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <Label htmlFor="phone">Phone</Label>
-                  <Input
-                    id="phone"
-                    value={formData.phone}
-                    onChange={(e) => {
-                      setFormData((prev) => ({
-                        ...prev,
-                        phone: e.target.value,
-                      }))
-                      setPhoneError('')
-                    }}
-                    placeholder="8 or 10 digits"
-                    className={phoneError ? 'border-red-500' : ''}
-                  />
-                  {phoneError && (
-                    <div className="text-sm text-red-500 mt-1">
-                      {phoneError}
+                    <div>
+                      <Label htmlFor="customerNote">General Note</Label>
+                      <Textarea
+                        id="customerNote"
+                        value={formData.customerNote}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            customerNote: e.target.value,
+                          }))
+                        }
+                        placeholder="General customer notes"
+                        rows={3}
+                      />
                     </div>
-                  )}
-                </div>
-                <div>
-                  <Label htmlFor="dogName">Dog Name *</Label>
-                  <Input
-                    id="dogName"
-                    value={formData.dogName}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        dogName: e.target.value,
-                      }))
-                    }
-                    placeholder="Required"
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="breed">Dog Breed</Label>
-                  <Input
-                    id="breed"
-                    value={formData.breed}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        breed: e.target.value,
-                      }))
-                    }
-                    placeholder="bread"
-                  />
-                </div>
-              </div>
-            </>
+                  </div>
 
-            {/* Today's Services and Pricing */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="todaysServices">Today's Services</Label>
-                <Input
-                  id="todaysServices"
-                  value={formData.todaysServices}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      todaysServices: e.target.value,
-                    }))
-                  }
-                  placeholder="Today's services"
-                />
-              </div>
-              <div>
-                <Label htmlFor="todaysPrice">Today's Price</Label>
-                <Input
-                  id="todaysPrice"
-                  type="number"
-                  value={formData.todaysPrice}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      todaysPrice: e.target.value,
-                    }))
-                  }
-                  placeholder="Today's price"
-                />
-              </div>
-            </div>
+                  <div className="flex justify-end gap-2">
+                    <Button type="button" variant="outline" onClick={onClose}>
+                      Cancel
+                    </Button>
+                    <Button type="submit">Add Appointment</Button>
+                  </div>
+                </form>
+              </TabsContent>
 
-            {/* Notes */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="todaysNote">Today's Note</Label>
-                <Textarea
-                  id="todaysNote"
-                  value={formData.todaysNote}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      todaysNote: e.target.value,
-                    }))
-                  }
-                  placeholder="Notes for today's appointment"
-                  rows={3}
-                />
-              </div>
-              <div>
-                <Label htmlFor="customerNote">General Note</Label>
-                <Textarea
-                  id="customerNote"
-                  value={formData.customerNote}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      customerNote: e.target.value,
-                    }))
-                  }
-                  placeholder="General customer notes"
-                  rows={3}
-                />
-              </div>
-            </div>
+              <TabsContent value="slot">
+                {String(apiTimeSlots) === '0' ? (
+                  // Show create slot form when no slot exists
+                  <form onSubmit={handleCreateSlot} className="space-y-4">
+                    <div>
+                      <Label>Slot Type</Label>
+                      <Select
+                        value={slotForm.slot_type}
+                        onValueChange={(v) =>
+                          setSlotForm((p) => ({ ...p, slot_type: v }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="small">Small</SelectItem>
+                          <SelectItem value="large">Large</SelectItem>
+                          <SelectItem value="any">Any</SelectItem>
+                          <SelectItem value="for_online_small">
+                            For Online Small
+                          </SelectItem>
+                          <SelectItem value="for_online_large">
+                            For Online Large
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {/* <div>
+                      <Label>Capacity</Label>
+                      <Input
+                        type="number"
+                        value={String(slotForm.capacity)}
+                        onChange={(e) =>
+                          setSlotForm((p) => ({
+                            ...p,
+                            capacity: Number(e.target.value || 1),
+                          }))
+                        }
+                      />
+                    </div> */}
+                    <div className="flex justify-end gap-2">
+                      <Button type="button" variant="outline" onClick={onClose}>
+                        Cancel
+                      </Button>
+                      <Button type="submit">Create Time Slot</Button>
+                    </div>
+                  </form>
+                ) : (
+                  // Show delete slot button when slot exists
+                  <div className="space-y-4">
+                    <p className="text-sm text-gray-600">
+                      Time slot {timeSlot} already exists. Do you want to remove
+                      it?
+                    </p>
+                    <div className="flex justify-end gap-2">
+                      <Button type="button" variant="outline" onClick={onClose}>
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        onClick={() => setIsDeleteConfirmOpen(true)}
+                      >
+                        Remove Time Slot
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
+          </div>
+        </DialogContent>
+      </Dialog>
 
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={onClose}>
-                Cancel
-              </Button>
-              <Button type="submit">Add Appointment</Button>
-            </div>
-          </form>
-        </div>
-      </DialogContent>
-    </Dialog>
+      <AlertDialog
+        open={isDeleteConfirmOpen}
+        onOpenChange={setIsDeleteConfirmOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Time Slot</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this time slot ({timeSlot})? This
+              action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteSlot}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }
 
@@ -2086,6 +2473,7 @@ function DogDetailDialog({
 
   const [isCustomerConnectDialogOpen, setIsCustomerConnectDialogOpen] =
     useState(false)
+  const [isCustomerDetailDialogOpen, setIsCustomerDetailDialogOpen] = useState(false)
   // const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false)
   const [formData, setFormData] = useState({
     customerId: '',
@@ -2109,14 +2497,16 @@ function DogDetailDialog({
     customerNote,
     serviceHistory,
     breed,
+    customerId,
   } = dogDetailData
+  
 
   const handleCustomerSelect = (
     customer: CustomerData,
     dog: DogData,
-    index: number
+    index: number,
   ) => {
-    console.log('Selected customer:', customer, 'Dog:', dog)
+    
     setFormData(() => ({
       customerData: customer,
       dogData: dog,
@@ -2191,7 +2581,13 @@ function DogDetailDialog({
                   {customerName ? `${customerName} - ${dogName}` : dogName}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent
+                className="space-y-3 cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setIsCustomerDetailDialogOpen(true)
+                }}
+              >
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label className="text-sm font-medium">Owner Name</Label>
@@ -2235,44 +2631,7 @@ function DogDetailDialog({
             </Card>
 
             {/* Service History */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <History className="h-5 w-5" />
-                  Service History
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {serviceHistory?.map((service) => (
-                    <div key={service.id} className="p-3 border rounded-lg">
-                      <div className="grid grid-cols-4 gap-2 items-start">
-                        <div className="col-span-3 font-medium break-words">
-                          {service.dog_name}
-                        </div>
-                        <div className="col-span-3 font-medium break-words">
-                          {service.service}
-                        </div>
-                        <div className="text-sm text-gray-500 text-right">
-                          {format(
-                            new Date(service.service_date),
-                            'MMM d, yyyy'
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <div className="text-sm text-gray-600">
-                          {service.service_note}
-                        </div>
-                        <div className="font-medium text-green-600">
-                          ${service.service_price}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+            <ServiceHistoryCard serviceHistory={serviceHistory} />
           </div>
 
           <div className="flex justify-end">
@@ -2280,6 +2639,13 @@ function DogDetailDialog({
           </div>
         </DialogContent>
       </Dialog>
+      
+      <CustomerDetailDialog
+        isOpen={isCustomerDetailDialogOpen}
+        onClose={() => setIsCustomerDetailDialogOpen(false)}
+        customerId={customerId || ''}
+        onUpdate={reLoadPage}
+      />
 
       {/*  Customer connect to database Dialog */}
 
@@ -2392,8 +2758,8 @@ function SettingsDialog({
   const toggleRule = (ruleId: string) => {
     setRules((prev) =>
       prev.map((rule) =>
-        rule.id === ruleId ? { ...rule, isEnabled: !rule.isEnabled } : rule
-      )
+        rule.id === ruleId ? { ...rule, isEnabled: !rule.isEnabled } : rule,
+      ),
     )
   }
 
@@ -2512,7 +2878,7 @@ function SettingsDialog({
                           'flex items-center justify-between p-3 border rounded-lg',
                           rule.isEnabled
                             ? 'bg-green-50 border-green-200'
-                            : 'bg-gray-50 border-gray-200'
+                            : 'bg-gray-50 border-gray-200',
                         )}
                       >
                         <div className="flex items-center gap-3">
@@ -2525,9 +2891,7 @@ function SettingsDialog({
                           <div>
                             <div className="font-medium">
                               {rule.type === 'weekly'
-                                ? `Every ${dayNames[rule.dayOfWeek!]} at ${
-                                    rule.time
-                                  }`
+                                ? `Every ${dayNames[rule.dayOfWeek!]} at ${rule.time}`
                                 : `${rule.specificDate} at ${rule.time}`}
                             </div>
                             <div className="text-sm text-gray-500">

@@ -21,28 +21,28 @@ interface Appointment {
 // GET /api/appointments/[id] - Get a specific appointment
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string } },
 ): Promise<NextResponse<ApiResponse<any>>> {
   try {
     const { id: appointment_id } = await params
 
     const appointmentsResult = await pool.query(
-      `SELECT a.created_at AS appointment_created_at, a.appointment_time,
+      `SELECT a.created_at AS appointment_created_at,to_char(a.appointment_time, 'HH24:MI') AS appointment_time,
         a.appointment_date, a.appointment_status,
         a.appointment_dog_name, a.appointment_customer_name,
-        a.appointment_phone,
+        a.appointment_phone, a.appointment_dog_weight, a.appointment_dog_appearance, a.behavioral_issues,
         a.today_services, a.today_price,
         a.today_note, a.updated_at AS appointment_updated_at,
         a.appointment_dog_breed, a.customer_note,
-        d.id AS dog_id, d.dog_name, d.dog_note, d.dog_breed,
+        d.id AS dog_id, d.dog_name, d.dog_note, d.dog_breed, d.dog_weight, d.dog_appearance, d.behavior_profile,
         c.id AS customer_id, c.customer_name
       FROM grooming.appointments a 
       LEFT JOIN grooming.dogs d ON a.dog_id = d.id 
       LEFT JOIN grooming.customers c ON d.customer_id = c.id
       WHERE a.id = $1 `,
-      [appointment_id]
+      [appointment_id],
     )
-    console.log('Appointments result:', appointmentsResult.rows)
+
     if (appointmentsResult.rows.length === 0) {
       return NextResponse.json({
         success: true,
@@ -61,29 +61,35 @@ export async function GET(
       WHERE dog_id = ANY($1)
       ORDER BY dog_id, service_date DESC
     `,
-      [dogIds]
+      [dogIds],
     )
     const services = servicesResult.rows
 
     // 4. 整理 service 給每個 dog_id 分組
-    const servicesByDog = services.reduce((acc, service) => {
-      if (!acc[service.dog_id]) acc[service.dog_id] = []
-      acc[service.dog_id].push(service)
-      return acc
-    }, {} as Record<number, Service[]>)
+    const servicesByDog = services.reduce(
+      (acc, service) => {
+        if (!acc[service.dog_id]) acc[service.dog_id] = []
+        acc[service.dog_id].push(service)
+        return acc
+      },
+      {} as Record<number, Service[]>,
+    )
 
     const customerIds = appointmentsResult.rows
       .map((r) => r.customer_id)
       .filter(Boolean)
     const phoneResult = await pool.query(
       `SELECT customer_id, phone FROM grooming.customer_phones WHERE customer_id = ANY($1)`,
-      [customerIds]
+      [customerIds],
     )
-    const phoneMap = phoneResult.rows.reduce((acc, row) => {
-      if (!acc[row.customer_id]) acc[row.customer_id] = []
-      acc[row.customer_id].push(row.phone)
-      return acc
-    }, {} as Record<number, string[]>)
+    const phoneMap = phoneResult.rows.reduce(
+      (acc, row) => {
+        if (!acc[row.customer_id]) acc[row.customer_id] = []
+        acc[row.customer_id].push(row.phone)
+        return acc
+      },
+      {} as Record<number, string[]>,
+    )
 
     const appointments = appointmentsResult.rows.map((row) => {
       const dogServices = servicesByDog[row.dog_id] || []
@@ -100,6 +106,8 @@ export async function GET(
         dogId: row.dog_id || null,
         dogName: row.dog_name || '',
         breed: row.appointment_dog_breed || '',
+        dogAppearance:
+          row.appointment_dog_appearance || row.dog_appearance || '',
         phone: row.appointment_phone || '',
         customerPhone: phoneMap[row.customer_id] || [],
         dogNote: row.dog_note || '',
@@ -110,6 +118,8 @@ export async function GET(
         serviceHistory: dogServices || [],
         todaysServices: row.today_services || '',
         todaysPrice: row.today_price || '',
+        dogWeight: row.appointment_dog_weight || row.dog_weight || null,
+        behavioralIssues: row.behavioral_issues || [],
         status: row.appointment_status,
       }
     })
@@ -125,7 +135,7 @@ export async function GET(
         success: false,
         error: 'Failed to fetch appointments',
       },
-      { status: 500 }
+      { status: 500 },
     )
   }
 }
@@ -133,7 +143,7 @@ export async function GET(
 // PUT /api/appointments/[id] - Update an appointment
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string } },
 ): Promise<NextResponse> {
   try {
     const { id } = await params // ✅ 正確取得 id
@@ -143,16 +153,18 @@ export async function PUT(
       dog_id,
       dogName,
       phone,
+      dogAppearance,
       customerNote,
       todaysNote,
       todaysServices,
       todaysPrice,
+      dogWeight,
+      behavioralIssues,
       status,
       breed,
       appointment_date,
       appointment_time,
     } = body
-    console.log('Received body for update:', body)
 
     // Start a transaction
     const client = await pool.connect()
@@ -162,11 +174,9 @@ export async function PUT(
       // Get the current appointment
       const appointmentResult = await client.query(
         'SELECT * FROM grooming.appointments WHERE id = $1',
-        [id]
+        [id],
       )
 
-      console.log('Current body:', body)
-      console.log('Current appointment:', appointmentResult.rows)
       if (appointmentResult.rows.length === 0) {
         await client.query('ROLLBACK')
         return NextResponse.json(
@@ -174,7 +184,7 @@ export async function PUT(
             success: false,
             error: 'Appointment not found',
           },
-          { status: 404 }
+          { status: 404 },
         )
       }
 
@@ -188,14 +198,12 @@ export async function PUT(
         // Check if customer exists
         const customerResult = await client.query(
           `SELECT customer_id FROM grooming.dogs WHERE id = $1`,
-          [dogId]
+          [dogId],
         )
         let customerId =
           customerResult.rows.length > 0
             ? customerResult.rows[0].customer_id
             : null
-        console.log('Customer ID found:', customerId)
-        console.log('customerNote:', customerNote)
       }
 
       // Update the appointment
@@ -211,10 +219,13 @@ export async function PUT(
              appointment_status = COALESCE($8, appointment_status),
              customer_note = COALESCE($9, customer_note),
              appointment_dog_breed = COALESCE($10, appointment_dog_breed),
-             appointment_date = COALESCE($11, appointment_date),
-             appointment_time = COALESCE($12, appointment_time),
+             appointment_dog_appearance = COALESCE($11, appointment_dog_appearance),
+             appointment_date = COALESCE($12, appointment_date),
+             appointment_time = COALESCE($13, appointment_time),
+             appointment_dog_weight = COALESCE($14, appointment_dog_weight),
+             behavioral_issues = COALESCE($15, behavioral_issues),
              updated_at = CURRENT_TIMESTAMP
-         WHERE id = $13
+         WHERE id = $16
          RETURNING *`,
         [
           body.phone || null,
@@ -227,11 +238,44 @@ export async function PUT(
           status || appointment.appointment_status,
           customerNote || appointment.customer_note,
           breed || null,
+          dogAppearance || null,
           appointment_date || null,
           appointment_time || null,
+          dogWeight || null,
+          behavioralIssues ? JSON.stringify(behavioralIssues) : null,
           id,
-        ]
+        ],
       )
+      if (
+        (dog_id || dogId) &&
+        (dogName ||
+          breed ||
+          dogAppearance ||
+          dogWeight ||
+          behavioralIssues ||
+          customerNote)
+      ) {
+        await client.query(
+          `UPDATE grooming.dogs
+          SET dog_name = COALESCE($1, dog_name),
+              dog_breed = COALESCE($2, dog_breed),
+              dog_appearance = COALESCE($3, dog_appearance),
+              behavior_profile = COALESCE($4, behavior_profile),
+              dog_weight = COALESCE($5, dog_weight),
+              dog_note = COALESCE($6, dog_note),
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = $7`,
+          [
+            dogName || null,
+            breed || null,
+            dogAppearance || null,
+            behavioralIssues ? JSON.stringify(behavioralIssues) : null,
+            dogWeight || null,
+            customerNote || null,
+            dog_id || dogId || null,
+          ],
+        )
+      }
 
       if (status === 'P') {
         // 1. 更新 appointment 狀態
@@ -241,9 +285,8 @@ export async function PUT(
               appointment_status = $1,
               updated_at = CURRENT_TIMESTAMP
           WHERE id = $2`,
-          [status, id]
+          [status, id],
         )
-        console.log('Appointment status updated to:', status)
 
         // 2. 再從 appointments 讀回當前資料（以確認資料是已更新過的）
         const {
@@ -252,7 +295,7 @@ export async function PUT(
           `SELECT dog_id, appointment_date, today_services, today_price, today_note, customer_note
           FROM grooming.appointments
           WHERE id = $1`,
-          [id]
+          [id],
         )
         const {
           dog_id,
@@ -271,7 +314,7 @@ export async function PUT(
           FROM grooming.dogs d
           JOIN grooming.customers c ON d.customer_id = c.id
           WHERE d.id = $1`,
-          [dog_id]
+          [dog_id],
         )
 
         if (customerData && customer_note !== customerData.customer_note) {
@@ -279,21 +322,16 @@ export async function PUT(
             `UPDATE grooming.customers 
             SET customer_note = $1, updated_at = CURRENT_TIMESTAMP
             WHERE id = $2`,
-            [customer_note || null, customerData.customer_id]
-          )
-          console.log(
-            'Updated customer_note for customer_id:',
-            customerData.customer_id
-          )
+            [customer_note || null, customerData.customer_id],
+          )('Updated customer_note for customer_id:', customerData.customer_id)
         }
 
         // 3. 根據 appointment 的內容，決定要 insert 或 update services 表
 
         const existingService = await client.query(
           `SELECT id FROM grooming.service_history WHERE dog_id = $1 AND service_date = $2`,
-          [dog_id, appointment_date]
+          [dog_id, appointment_date],
         )
-        console.log('Existing service record found:', existingService)
 
         if (existingService.rowCount > 0) {
           await client.query(
@@ -309,7 +347,7 @@ export async function PUT(
               today_note || null,
               dog_id,
               appointment_date,
-            ]
+            ],
           )
         } else {
           await client.query(
@@ -322,9 +360,8 @@ export async function PUT(
               today_services || null,
               today_price || null,
               today_note || null,
-            ]
+            ],
           )
-          console.log('Inserted new service record for dog_id:', dog_id)
         }
       }
 
@@ -348,7 +385,7 @@ export async function PUT(
         success: false,
         error: 'Failed to update appointment',
       },
-      { status: 500 }
+      { status: 500 },
     )
   }
 }
@@ -356,14 +393,14 @@ export async function PUT(
 // DELETE /api/appointments/[id] - Delete an appointment
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string } },
 ): Promise<NextResponse<ApiResponse<null>>> {
   try {
     const { id } = await params
 
     const result = await pool.query(
       'DELETE FROM grooming.appointments WHERE id = $1 RETURNING id',
-      [id]
+      [id],
     )
 
     if (result.rows.length === 0) {
@@ -372,7 +409,7 @@ export async function DELETE(
           success: false,
           error: 'Appointment not found',
         },
-        { status: 404 }
+        { status: 404 },
       )
     }
 
@@ -387,7 +424,7 @@ export async function DELETE(
         success: false,
         error: 'Failed to delete appointment',
       },
-      { status: 500 }
+      { status: 500 },
     )
   }
 }

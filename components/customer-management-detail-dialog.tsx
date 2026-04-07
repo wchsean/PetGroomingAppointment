@@ -1,101 +1,133 @@
-"use client"
+'use client'
 
-import { useState, useEffect } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { User, Phone, Dog, Edit2, Plus, Trash2, Save, X, Calendar, Star } from "lucide-react"
-import { format } from "date-fns"
-import { PhoneManagementDialog } from "./phone-management-dialog"
-import { DogDetailDialog } from "./dog-detail-dialog"
-import {createDog} from "@/lib/api-client"
-import type { CustomerDetail } from "@/types/customer-management"
+import { useState, useEffect } from 'react'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  User,
+  Phone,
+  Dog,
+  Edit2,
+  Plus,
+  Trash2,
+  Save,
+  X,
+  Calendar,
+  Star,
+  Weight,
+} from 'lucide-react'
+import { format } from 'date-fns'
+import { PhoneManagementDialog } from './phone-management-dialog'
+import { DogDetailDialog } from './dog-detail-dialog'
+import { createDog } from '@/lib/api-client'
+import type { CustomerDetail } from '@/types/customer-management'
 
 interface CustomerDetailDialogProps {
   isOpen: boolean
   onClose: () => void
-  customerId: string | null
+  customerId: string | number | null
   onUpdate: () => void
 }
 
 interface Phone {
-  id: string;
-  phone_owner: string | null;
-  phone: string;
-  phone_type: string | null;
-  is_primary: boolean;
+  id: string
+  phone_owner: string | null
+  phone: string
+  phone_type: string | null
+  is_primary: boolean
 }
 
-export function CustomerDetailDialog({ isOpen, onClose, customerId, onUpdate }: CustomerDetailDialogProps) {
+export function CustomerDetailDialog({
+  isOpen,
+  onClose,
+  customerId,
+  onUpdate,
+}: CustomerDetailDialogProps) {
   const [customer, setCustomer] = useState<CustomerDetail | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
-  const [editData, setEditData] = useState({ name: "", note: "" })
+  const [editData, setEditData] = useState({ name: '', email: '', note: '' })
   const [isPhoneDialogOpen, setIsPhoneDialogOpen] = useState(false)
   const [isDogCreateDialogOpen, setIsDogCreateDialogOpen] = useState(false)
   const [selectedDogId, setSelectedDogId] = useState<string | null>(null)
-  const [selectedPhoneData, setSelectedPhoneData] = useState<string | null>(null)
+  const [selectedPhoneData, setSelectedPhoneData] = useState<string | null>(
+    null,
+  )
 
   const fetchCustomerDetails = async () => {
     if (!customerId) return
 
     setIsLoading(true)
     try {
-      const response = await fetch(`/api/customer-management/customers/${customerId}`)
+      const response = await fetch(
+        `/api/customer-management/customers/${customerId}`,
+      )
       const result = await response.json()
 
       if (result.success) {
         const customerData = result.data
         const formattedCustomer: CustomerDetail = {
           id: customerData.id.toString(),
-          name: customerData.customer_name || "Unnamed Customer",
-          note: customerData.customer_note || "",
+          name: customerData.customer_name || 'Unnamed Customer',
+          email: customerData.customer_email || '',
+          note: customerData.customer_note || '',
           active: customerData.customer_active,
           phones: (customerData.phones || []).map((phone: any) => ({
             id: phone.id.toString(),
-            owner: phone.phone_owner || "",
+            owner: phone.phone_owner || '',
             phone: phone.phone,
-            type: phone.phone_type || "",
+            type: phone.phone_type || '',
             isPrimary: phone.is_primary,
           })),
           dogs: (customerData.dogs || []).map((dog: any) => ({
             id: dog.id.toString(),
             name: dog.dog_name,
-            breed: dog.dog_breed || "",
-            note: dog.dog_note || "",
+            breed: dog.dog_breed || '',
+            Weight: dog.dog_weight || '',
+            note: dog.dog_note || '',
             active: dog.dog_active,
             recentServices: (dog.recent_services || []).map((service: any) => ({
               id: service.id.toString(),
               date: service.service_date,
               service: service.service,
-              price: service.service_price?.toString() || "",
-              note: service.service_note || "",
+              price: service.service_price?.toString() || '',
+              note: service.service_note || '',
             })),
-            upcomingAppointments: (dog.upcoming_appointments || []).map((apt: any) => ({
-              id: apt.id.toString(),
-              date: apt.appointment_date,
-              time: apt.appointment_time,
-              services: apt.today_services || "",
-              status: apt.appointment_status,
-            })),
+            upcomingAppointments: (dog.upcoming_appointments || []).map(
+              (apt: any) => ({
+                id: apt.id.toString(),
+                date: apt.appointment_date,
+                time: apt.appointment_time,
+                services: apt.today_services || '',
+                status: apt.appointment_status,
+              }),
+            ),
           })),
           totalDogs: customerData.dogs?.length || 0,
-          activeDogs: customerData.dogs?.filter((dog: any) => dog.dog_active).length || 0,
+          activeDogs:
+            customerData.dogs?.filter((dog: any) => dog.dog_active).length || 0,
         }
 
         setCustomer(formattedCustomer)
         setEditData({
           name: formattedCustomer.name,
+          email: formattedCustomer.email,
           note: formattedCustomer.note,
         })
       }
     } catch (error) {
-      console.error("Error fetching customer details:", error)
+      console.error('Error fetching customer details:', error)
     } finally {
       setIsLoading(false)
     }
@@ -111,14 +143,18 @@ export function CustomerDetailDialog({ isOpen, onClose, customerId, onUpdate }: 
     if (!customerId) return
 
     try {
-      const response = await fetch(`/api/customer-management/customers/${customerId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customer_name: editData.name,
-          customer_note: editData.note,
-        }),
-      })
+      const response = await fetch(
+        `/api/customer-management/customers/${customerId}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customer_name: editData.name,
+            customer_email: editData.email,
+            customer_note: editData.note,
+          }),
+        },
+      )
 
       if (response.ok) {
         setIsEditing(false)
@@ -126,29 +162,30 @@ export function CustomerDetailDialog({ isOpen, onClose, customerId, onUpdate }: 
         onUpdate()
       }
     } catch (error) {
-      console.error("Error updating customer:", error)
+      console.error('Error updating customer:', error)
     }
   }
 
   const handleUpdatePhone = (phoneDate: Phone | null = null) => {
-    console.log("Updating phone with ID:", phoneDate)
-    setSelectedPhoneData(phoneDate);
+    setSelectedPhoneData(phoneDate)
     setIsPhoneDialogOpen(true)
   }
 
   const handleDeletePhone = async (phoneId: string) => {
     try {
-      const response = await fetch(`/api/customer-management/phones/${phoneId}`, {
-        method: "DELETE",
-      })
+      const response = await fetch(
+        `/api/customer-management/phones/${phoneId}`,
+        {
+          method: 'DELETE',
+        },
+      )
 
-      console.log("Delete phone response:", response)
       if (response.ok) {
         fetchCustomerDetails()
         onUpdate()
       }
     } catch (error) {
-      console.error("Error deleting phone:", error)
+      console.error('Error deleting phone:', error)
     }
   }
 
@@ -163,19 +200,15 @@ export function CustomerDetailDialog({ isOpen, onClose, customerId, onUpdate }: 
       }
 
       const response = await createDog(createdDogData)
-      console.log("response:", response)
 
       if (response.ok) {
         fetchCustomerDetails()
         onUpdate()
       }
-
-      
-  } catch (error) {
-      console.error("Error creating dog:", error)
+    } catch (error) {
+      console.error('Error creating dog:', error)
       // Handle error (e.g., show notification)
-    }
-    finally {
+    } finally {
       setIsDogCreateDialogOpen(false)
     }
   }
@@ -184,11 +217,22 @@ export function CustomerDetailDialog({ isOpen, onClose, customerId, onUpdate }: 
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogContent className="sm:max-w-4xl">
-          <div className="flex justify-center items-center h-32">{isLoading ? "Loading..." : "Customer not found"}</div>
+          <div className="flex justify-center items-center h-32">
+            {isLoading ? 'Loading...' : 'Customer not found'}
+          </div>
         </DialogContent>
       </Dialog>
     )
   }
+  const primaryPhone =
+    customer.phones.find((p) => p.isPrimary) || customer.phones[0] || null
+
+  const upcomingAppointments = customer.dogs.flatMap((dog) =>
+    dog.upcomingAppointments.map((apt) => ({
+      ...apt,
+      dogName: dog.name,
+    })),
+  )
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -201,115 +245,285 @@ export function CustomerDetailDialog({ isOpen, onClose, customerId, onUpdate }: 
         </DialogHeader>
 
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="phones">Phone Management</TabsTrigger>
-            <TabsTrigger value="dogs">Pet Management</TabsTrigger>
             <TabsTrigger value="history">Service History</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
             {/* Customer Basic Info */}
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Basic Information</CardTitle>
-                <div className="flex gap-2">
-                  {isEditing ? (
-                    <>
-                      <Button size="sm" onClick={handleSaveCustomer}>
-                        <Save className="h-4 w-4 mr-1" />
-                        Save
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => setIsEditing(false)}>
-                        <X className="h-4 w-4 mr-1" />
-                        Cancel
-                      </Button>
-                    </>
-                  ) : (
-                    <Button size="sm" variant="outline" onClick={() => setIsEditing(true)}>
-                      <Edit2 className="h-4 w-4 mr-1" />
-                      Edit
-                    </Button>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {isEditing ? (
-                  <>
-                    <div>
-                      <Label htmlFor="name">Customer Name</Label>
-                      <Input
-                        id="name"
-                        value={editData.name}
-                        onChange={(e) => setEditData((prev) => ({ ...prev, name: e.target.value }))}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="note">Notes</Label>
-                      <Textarea
-                        id="note"
-                        value={editData.note}
-                        onChange={(e) => setEditData((prev) => ({ ...prev, note: e.target.value }))}
-                        rows={3}
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div>
-                      <Label className="text-sm font-medium">Customer Name</Label>
-                      <p className="text-lg">{customer.name}</p>
-                    </div>
-                    {customer.note && (
-                      <div>
-                        <Label className="text-sm font-medium">Notes</Label>
-                        <p className="text-sm text-gray-700">{customer.note}</p>
-                      </div>
-                    )}
-                  </>
-                )}
-              </CardContent>
-            </Card>
+            <div className="space-y-6">
+              {/* ===================== Basic Info ===================== */}
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle>Basic Information</CardTitle>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Phone className="h-5 w-5" />
-                  Phone Numbers
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {customer.phones.length === 0 ? (
-                  <p className="text-sm text-gray-500">No phone numbers available</p>
-                ) : (
-                  customer.phones.map((phone) => (
-                    <div key={phone.id} className="flex items-center justify-between p-2 border rounded-lg">
-                      <div>
-                        <div className="font-medium">{phone.phone}</div>
-                        {phone.owner && <div className="text-sm text-gray-600">Owner: {phone.owner}</div>}
-                        {phone.type && <div className="text-sm text-gray-600">Type: {phone.type}</div>}
-                      </div>
-                      <div className="flex gap-2">
-                        <Button size="sm" variant="outline" onClick={() => handleUpdatePhone(phone)}>
-                          <Edit2 className="h-4 w-4" />
+                  <div className="flex gap-2">
+                    {isEditing ? (
+                      <>
+                        <Button size="sm" onClick={handleSaveCustomer}>
+                          <Save className="h-4 w-4 mr-1" />
+                          Save
                         </Button>
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => handleDeletePhone(phone.id)}
+                          onClick={() => setIsEditing(false)}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <X className="h-4 w-4 mr-1" />
+                          Cancel
                         </Button>
+                      </>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setIsEditing(true)}
+                      >
+                        <Edit2 className="h-4 w-4 mr-1" />
+                        Edit
+                      </Button>
+                    )}
+                  </div>
+                </CardHeader>
+
+                <CardContent className="space-y-4">
+                  {isEditing ? (
+                    <>
+                      <div>
+                        <Label>Name</Label>
+                        <Input
+                          value={editData.name}
+                          onChange={(e) =>
+                            setEditData((prev) => ({
+                              ...prev,
+                              name: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div>
+                        <Label>Email</Label>
+                        <Input
+                          value={editData.email}
+                          onChange={(e) =>
+                            setEditData((prev) => ({
+                              ...prev,
+                              email: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div>
+                        <Label>Note</Label>
+                        <Textarea
+                          value={editData.note}
+                          onChange={(e) =>
+                            setEditData((prev) => ({
+                              ...prev,
+                              note: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <Label className="text-sm">Customer Name</Label>
+                        <p className="text-lg">{customer.name}</p>
+                      </div>
+                      <div>
+                        <Label className="text-sm">Customer Email</Label>
+                        <p className="text-lg">{customer.email}</p>
+                      </div>
+
+                      {customer.note && (
+                        <div>
+                          <Label className="text-sm">Notes</Label>
+                          <p className="text-sm text-gray-600">
+                            {customer.note}
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* ===================== Phone ===================== */}
+              <Card>
+                <CardHeader className="flex flex-row justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Phone className="h-5 w-5" />
+                    Phone
+                  </CardTitle>
+
+                  <Button size="sm" onClick={() => setIsPhoneDialogOpen(true)}>
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add Phone
+                  </Button>
+                </CardHeader>
+
+                <CardContent className="space-y-3">
+                  {customer.phones.length === 0 ? (
+                    <p className="text-sm text-gray-500">No phone numbers</p>
+                  ) : (
+                    customer.phones.map((phone) => {
+                      const isPrimary = primaryPhone?.id === phone.id
+
+                      return (
+                        <div
+                          key={phone.id}
+                          className="flex justify-between items-center border p-3 rounded"
+                        >
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">{phone.phone}</span>
+
+                              {isPrimary && (
+                                <span className="text-green-600 font-semibold">
+                                  ✔ Primary
+                                </span>
+                              )}
+                            </div>
+
+                            {phone.owner && (
+                              <div className="text-sm text-gray-500">
+                                {phone.owner}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleUpdatePhone(phone)}
+                            >
+                              <Edit2 className="h-4 w-4" />
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleDeletePhone(phone.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* ===================== Pets ===================== */}
+              <Card>
+                <CardHeader className="flex flex-row justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Dog className="h-5 w-5" />
+                    Pets
+                  </CardTitle>
+
+                  <Button
+                    size="sm"
+                    onClick={() => setIsDogCreateDialogOpen(true)}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add Pet
+                  </Button>
+                </CardHeader>
+
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {customer.dogs.map((dog) => (
+                      <div
+                        key={dog.id}
+                        className="p-4 border rounded-lg cursor-pointer hover:bg-gray-50"
+                        onClick={() => setSelectedDogId(dog.id)}
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <h4 className="font-medium">{dog.name}</h4>
+                          <Badge variant={dog.active ? 'default' : 'secondary'}>
+                            {dog.active ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </div>
+                        {dog.breed && (
+                          <p className="text-sm text-gray-600 mb-2">
+                            Breed: {dog.breed}
+                          </p>
+                        )}
+                        <div className="text-xs text-gray-500">
+                          <div>
+                            Recent services: {dog.recentServices.length}
+                          </div>
+                          <div>
+                            Upcoming appointments:{' '}
+                            {dog.upcomingAppointments.length}
+                          </div>
+                        </div>
+                        {dog.recentServices.length > 0 && (
+                          <div className="mt-3 pt-3 border-t">
+                            <p className="text-xs text-gray-500 mb-1">
+                              Latest service:
+                            </p>
+                            <div className="text-sm">
+                              <div className="font-medium">
+                                {dog.recentServices[0].service}
+                              </div>
+                              <div className="text-gray-600">
+                                {format(
+                                  new Date(dog.recentServices[0].date),
+                                  'yyyy/MM/dd',
+                                )}
+                                {dog.recentServices[0].price &&
+                                  ` - $${dog.recentServices[0].price}`}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* ===================== Upcoming ===================== */}
+            {upcomingAppointments.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Calendar className="h-5 w-5" />
+                    Upcoming Appointments
+                  </CardTitle>
+                </CardHeader>
+
+                <CardContent className="space-y-3">
+                  {upcomingAppointments.map((apt) => (
+                    <div key={apt.id} className="border p-3 rounded">
+                      <div className="flex justify-between">
+                        <div>
+                          <div className="font-medium">{apt.dogName}</div>
+                          <div className="text-sm text-gray-600">
+                            {apt.services}
+                          </div>
+                        </div>
+
+                        <div className="text-right text-sm text-gray-500">
+                          <div>{format(new Date(apt.date), 'yyyy/MM/dd')}</div>
+                          <div>{apt.time}</div>
+                        </div>
                       </div>
                     </div>
-                  ))
-                )}
-                <Button size="sm" variant="outline" onClick={() => setIsPhoneDialogOpen(true)}>
-                  <Plus className="h-4 w-4 mr-1" />
-                  Add Phone
-                </Button>
-              </CardContent>
-            </Card>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
 
             {/* Statistics */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -319,7 +533,9 @@ export function CustomerDetailDialog({ isOpen, onClose, customerId, onUpdate }: 
                     <Phone className="h-5 w-5 text-blue-600" />
                     <div>
                       <p className="text-sm text-gray-600">Phone Numbers</p>
-                      <p className="text-2xl font-bold">{customer.phones.length}</p>
+                      <p className="text-2xl font-bold">
+                        {customer.phones.length}
+                      </p>
                     </div>
                   </div>
                 </CardContent>
@@ -342,137 +558,19 @@ export function CustomerDetailDialog({ isOpen, onClose, customerId, onUpdate }: 
                   <div className="flex items-center gap-2">
                     <Calendar className="h-5 w-5 text-purple-600" />
                     <div>
-                      <p className="text-sm text-gray-600">Upcoming Appointments</p>
+                      <p className="text-sm text-gray-600">
+                        Upcoming Appointments
+                      </p>
                       <p className="text-2xl font-bold">
-                        {customer.dogs.reduce((sum, dog) => sum + dog.upcomingAppointments.length, 0)}
+                        {customer.dogs.reduce(
+                          (sum, dog) => sum + dog.upcomingAppointments.length,
+                          0,
+                        )}
                       </p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
-            </div>
-
-            {/* Pet Quick Preview */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Pet Preview</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {customer.dogs.map((dog) => (
-                    <div
-                      key={dog.id}
-                      className="p-4 border rounded-lg cursor-pointer hover:bg-gray-50"
-                      onClick={() => setSelectedDogId(dog.id)}
-                    >
-                      <div className="flex justify-between items-start mb-2">
-                        <h4 className="font-medium">{dog.name}</h4>
-                        <Badge variant={dog.active ? "default" : "secondary"}>
-                          {dog.active ? "Active" : "Inactive"}
-                        </Badge>
-                      </div>
-                      {dog.breed && <p className="text-sm text-gray-600 mb-2">Breed: {dog.breed}</p>}
-                      <div className="text-xs text-gray-500">
-                        <div>Recent services: {dog.recentServices.length}</div>
-                        <div>Upcoming appointments: {dog.upcomingAppointments.length}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="phones" className="space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="text-lg font-semibold">Phone Management</h3>
-              <Button onClick={() => setIsPhoneDialogOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Phone
-              </Button>
-            </div>
-
-            <div className="space-y-3">
-              {customer.phones.map((phone) => (
-                <Card key={phone.id}>
-                  <CardContent className="p-4">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="font-medium">{phone.phone}</span>
-                          {phone.isPrimary && (
-                            <Badge variant="default" className="text-xs">
-                              <Star className="h-3 w-3 mr-1" />
-                              Primary
-                            </Badge>
-                          )}
-                        </div>
-                        {phone.owner && <p className="text-sm text-gray-600">Contact: {phone.owner}</p>}
-                        {phone.type && <p className="text-sm text-gray-600">Type: {phone.type}</p>}
-                      </div>
-                      <div className="flex gap-2">
-                        <Button size="sm" variant="outline">
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => handleDeletePhone(phone.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </TabsContent>
-
-          <TabsContent value="dogs" className="space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="text-lg font-semibold">Pet Management</h3>
-              <Button onClick={() => setIsDogCreateDialogOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Pet
-              </Button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {customer.dogs.map((dog) => (
-                <Card key={dog.id} className="cursor-pointer hover:shadow-md transition-shadow">
-                  <CardContent className="p-4" onClick={() => setSelectedDogId(dog.id)}>
-                    <div className="flex justify-between items-start mb-3">
-                      <h4 className="font-medium text-lg">{dog.name}</h4>
-                      <Badge variant={dog.active ? "default" : "secondary"}>{dog.active ? "Active" : "Inactive"}</Badge>
-                    </div>
-
-                    {dog.breed && <p className="text-sm text-gray-600 mb-2">Breed: {dog.breed}</p>}
-
-                    {dog.note && <p className="text-sm text-gray-600 mb-3">{dog.note}</p>}
-
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Recent services:</span>
-                        <span className="font-medium">{dog.recentServices.length}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Upcoming appointments:</span>
-                        <span className="font-medium">{dog.upcomingAppointments.length}</span>
-                      </div>
-                    </div>
-
-                    {dog.recentServices.length > 0 && (
-                      <div className="mt-3 pt-3 border-t">
-                        <p className="text-xs text-gray-500 mb-1">Latest service:</p>
-                        <div className="text-sm">
-                          <div className="font-medium">{dog.recentServices[0].service}</div>
-                          <div className="text-gray-600">
-                            {format(new Date(dog.recentServices[0].date), "yyyy/MM/dd")}
-                            {dog.recentServices[0].price && ` - $${dog.recentServices[0].price}`}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
             </div>
           </TabsContent>
 
@@ -483,28 +581,45 @@ export function CustomerDetailDialog({ isOpen, onClose, customerId, onUpdate }: 
               {customer.dogs.map((dog) => (
                 <Card key={dog.id}>
                   <CardHeader>
-                    <CardTitle className="text-base">{dog.name}'s Service Records</CardTitle>
+                    <CardTitle className="text-base">
+                      {dog.name}'s Service Records
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
                     {dog.recentServices.length > 0 ? (
                       <div className="space-y-3">
                         {dog.recentServices.map((service) => (
-                          <div key={service.id} className="flex justify-between items-start p-3 border rounded">
+                          <div
+                            key={service.id}
+                            className="flex justify-between items-start p-3 border rounded"
+                          >
                             <div className="flex-1">
-                              <div className="font-medium">{service.service}</div>
-                              {service.note && <div className="text-sm text-gray-600 mt-1">{service.note}</div>}
+                              <div className="font-medium">
+                                {service.service}
+                              </div>
+                              {service.note && (
+                                <div className="text-sm text-gray-600 mt-1">
+                                  {service.note}
+                                </div>
+                              )}
                             </div>
                             <div className="text-right">
                               <div className="text-sm text-gray-500">
-                                {format(new Date(service.date), "yyyy/MM/dd")}
+                                {format(new Date(service.date), 'yyyy/MM/dd')}
                               </div>
-                              {service.price && <div className="font-medium text-green-600">${service.price}</div>}
+                              {service.price && (
+                                <div className="font-medium text-green-600">
+                                  ${service.price}
+                                </div>
+                              )}
                             </div>
                           </div>
                         ))}
                       </div>
                     ) : (
-                      <div className="text-center text-gray-500 py-4">No service records yet</div>
+                      <div className="text-center text-gray-500 py-4">
+                        No service records yet
+                      </div>
                     )}
                   </CardContent>
                 </Card>
@@ -520,7 +635,10 @@ export function CustomerDetailDialog({ isOpen, onClose, customerId, onUpdate }: 
         {/* Sub-dialogs */}
         <PhoneManagementDialog
           isOpen={isPhoneDialogOpen}
-          onClose={() => {setIsPhoneDialogOpen(false);setSelectedPhoneData(null);}}
+          onClose={() => {
+            setIsPhoneDialogOpen(false)
+            setSelectedPhoneData(null)
+          }}
           customerId={customer.id}
           phoneData={selectedPhoneData ? selectedPhoneData : null}
           onSuccess={() => {
@@ -541,8 +659,14 @@ export function CustomerDetailDialog({ isOpen, onClose, customerId, onUpdate }: 
         />
 
         {/*  dog Create Dialog */}
-        <Dialog open={isDogCreateDialogOpen} onOpenChange={setIsDogCreateDialogOpen}>
-          <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <Dialog
+          open={isDogCreateDialogOpen}
+          onOpenChange={setIsDogCreateDialogOpen}
+        >
+          <DialogContent
+            className="sm:max-w-4xl max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <DialogHeader>
               <DialogTitle>Add Dog</DialogTitle>
             </DialogHeader>
@@ -550,22 +674,39 @@ export function CustomerDetailDialog({ isOpen, onClose, customerId, onUpdate }: 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="name">Dog Name</Label>
-                  <Input id="name" 
-                    onChange={(e) => setEditData((prev) => ({ ...prev, dogName: e.target.value }))} 
-                    placeholder="Dog Name" />
+                  <Input
+                    id="name"
+                    onChange={(e) =>
+                      setEditData((prev) => ({
+                        ...prev,
+                        dogName: e.target.value,
+                      }))
+                    }
+                    placeholder="Dog Name"
+                  />
                 </div>
                 <div className="col-span-2">
                   <Label htmlFor="breed">Breed</Label>
                   <Input
                     id="breed"
-                    onChange={(e) => setEditData((prev) => ({ ...prev, breed: e.target.value }))}
+                    onChange={(e) =>
+                      setEditData((prev) => ({
+                        ...prev,
+                        breed: e.target.value,
+                      }))
+                    }
                     placeholder="breed"
                   />
                 </div>
                 <div>
                   <Label className="text-xs">Dog's Note</Label>
                   <Textarea
-                    onChange={(e) => setEditData((prev) => ({ ...prev, dogNote: e.target.value }))}
+                    onChange={(e) =>
+                      setEditData((prev) => ({
+                        ...prev,
+                        dogNote: e.target.value,
+                      }))
+                    }
                     className="text-sm"
                     rows={2}
                     placeholder="Notes for today's appointment"
@@ -581,12 +722,10 @@ export function CustomerDetailDialog({ isOpen, onClose, customerId, onUpdate }: 
                   Cancel
                 </Button>
                 <Button type="submit">Add Dog</Button>
-  
               </div>
             </form>
           </DialogContent>
         </Dialog>
-        
       </DialogContent>
     </Dialog>
   )

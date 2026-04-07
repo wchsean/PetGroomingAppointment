@@ -14,6 +14,9 @@ export interface Dog {
   name: string
   breed: string | null
   note: string | null
+  dog_appearance?: string | null
+  behavior_profile?: Record<string, any> | null
+  weight?: number | null
   created_at: string
   updated_at: string
   previous_services?: string | null
@@ -34,10 +37,11 @@ export interface ServiceHistory {
 export interface Appointment {
   id: number
   dog_id: number | null
+  breed: string | null
+  dog_appearance?: string | null
   phone: string[] | null
   date: string
   time: string
-  quick_details: string | null
   todays_services: string | null
   todays_price: string | null
   todays_note: string | null
@@ -51,7 +55,7 @@ export interface Appointment {
 
 export interface AvailabilityRule {
   id: number
-  type: "weekly" | "specific"
+  type: 'weekly' | 'specific'
   day_of_week: number | null
   specific_date: string | null
   time: string
@@ -70,7 +74,7 @@ export interface ApiResponse<T> {
 export interface CustomerData {
   id: string
   name: string
-  phone: string
+  phone: string[]
   customerNote: string
   dogs: DogData[]
   services: ServiceHistoryData[]
@@ -81,7 +85,10 @@ export interface DogData {
   id: string
   name: string
   breed: string
+  appearance?: string
   note: string
+  weight?: number | null
+  behaviorProfile?: Record<string, any> | null
   previousServices: string
   previousPrice: string
   serviceHistory: ServiceHistoryData[]
@@ -97,11 +104,16 @@ export interface ServiceHistoryData {
 
 export interface AppointmentData {
   id: string
-  data: string
+  date: string
   time: string
-  quickDetails?: string
   customerName: string
+  appointmentCustomerName?: string
+  customerId?: string
   dogName: string
+  appointmentDogName?: string
+  dogId?: string
+  dogAppearance?: string
+  breed: string
   phone: string
   dogNote: string
   customerNote: string
@@ -110,23 +122,25 @@ export interface AppointmentData {
   previousPrice: string
   todaysServices: string
   todaysPrice: string
+  dogWeight?: number | null
+  behavioralIssues?: Record<string, any>[] | null
   serviceHistory: []
-  status: "no-status" | "C" | "F" | "FN" | "P" | "x"
+  status: 'no-status' | 'C' | 'F' | 'FN' | 'P' | 'x'
 }
 
 export interface AvailabilityRuleData {
   id: string
-  type: "weekly" | "specific"
+  type: 'weekly' | 'specific'
   dayOfWeek?: number
   specificDate?: string
   time: string
   isEnabled: boolean
-  appointment_limit?:number
+  appointment_limit?: number
 }
 
 export interface DateMarking {
   id: string
-  type: "weekly" | "specific" | "holiday"
+  type: 'weekly' | 'specific' | 'holiday'
   marking_day_of_week?: number
   marking_date?: string
 }
@@ -135,4 +149,17 @@ export interface Daily_note {
   id: string
   date: string
   note: string
+}
+
+export interface TimeSlotData {
+  id: number
+  slot_date: string
+  slot_time: string
+  slot_type: 'small' | 'large' | 'any'
+  appointment_limit: number
+  is_enabled: boolean
+  booked_count?: number
+  available_count?: number
+  created_at?: string
+  updated_at?: string
 }

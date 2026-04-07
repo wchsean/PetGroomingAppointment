@@ -2,9 +2,11 @@ import { type NextRequest, NextResponse } from "next/server"
 import pool from "@/lib/db"
 
 // PUT /api/customer-management/phones/[id] - 更新電話
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request:Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const phoneId = params.id
+    const phoneId = (await params).id
     const body = await request.json()
     const { phone_owner, phone, phone_type, is_primary, customer_id } = body
 

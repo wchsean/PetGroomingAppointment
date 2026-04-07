@@ -7,6 +7,7 @@ import type {
   DateMarking,
   ApiResponse,
   Daily_note,
+  TimeSlotData,
 } from '@/types'
 
 // Base API URL
@@ -44,7 +45,6 @@ export async function searchCustomers(
         id: dog.id.toString(),
         name: dog.dog_name || '',
         breed: dog.dog_breed || '',
-        appearance: dog.dog_appearance || '',
         note: dog.dog_note || '',
         previousServices: dog.previous_service || '',
         previousPrice: dog.previous_price || '',
@@ -84,7 +84,6 @@ export async function createAppointment(
     },
     body: JSON.stringify({
       date: appointment.date, // Use current date or pass from appointment
-      appointmentSlotId: appointment.appointmentSlotId, // Pass the API time slot ID
       time: appointment.time,
       customerId: appointment.customerId || '',
       customerName: appointment.customerName,
@@ -92,10 +91,7 @@ export async function createAppointment(
       dogName: appointment.dogName,
       breed: appointment.breed,
       phone: appointment.phone,
-      dogAppearance: appointment.dogAppearance,
       dogNote: appointment.dogNote,
-      behavioralIssues: appointment.behavioralIssues,
-      dogWeight: appointment.dogWeight,
       customerNote: appointment.customerNote,
       todaysNote: appointment.todaysNote,
       todaysServices: appointment.todaysServices,
@@ -105,46 +101,13 @@ export async function createAppointment(
   })
 
   const result = await handleResponse<any>(response)
-  // Return the created appointment row (backend returns inserted row)
-  return result.data
-}
+  const appointmentId = result.data.id.toString()
+  const appointmentDetail = await getAppointmentById(appointmentId)
 
-// Time slot APIs
-export async function getTimeSlots(date: Date): Promise<any[]> {
-  const dateStr = format(date, 'yyyy-MM-dd')
-  const response = await fetch(`${API_BASE_URL}/slots?date=${dateStr}`)
-  const result = await handleResponse<any>(response)
-  // endpoint returns { date, slots }
-  return result.slots || result.data || []
-}
-
-export async function createTimeSlot(payload: {
-  slot_date: string
-  slot_time: string
-  slot_type?: string
-  capacity?: number
-}) {
-  const response = await fetch(`${API_BASE_URL}/admin/slots`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-  const result = await handleResponse<any>(response)
-  return result.data
-}
-
-export async function deleteTimeSlot(
-  slotId: string,
-  hardDelete = false,
-): Promise<void> {
-  const url = `${API_BASE_URL}/admin/slots/${slotId}${hardDelete ? '?hard=true' : ''}`
-
-  const response = await fetch(url, {
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-  })
-
-  await handleResponse<null>(response)
+  // Return the appointment data
+  return {
+    appointmentDetail,
+  }
 }
 
 export async function updateAppointment(
@@ -160,10 +123,7 @@ export async function updateAppointment(
       customerName: appointment.appointmentCustomerName,
       dog_id: appointment.dogId,
       dogName: appointment.appointmentDogName,
-      dogAppearance: appointment.dogAppearance,
       breed: appointment.breed,
-      behavioralIssues: appointment.behavioralIssues,
-      dogWeight: appointment.dogWeight,
       phone: appointment.phone,
       dogNote: appointment.dogNote,
       customerNote: appointment.customerNote,
@@ -229,7 +189,7 @@ export async function saveAvailabilityRules(
     specific_date: rule.specificDate,
     time: rule.time,
     is_enabled: rule.isEnabled,
-    capacity: rule.capacity || null,
+    appointment_limit: rule.appointment_limit || null,
   }))
 
   const response = await fetch(`${API_BASE_URL}/availability-rules`, {
@@ -394,7 +354,6 @@ export async function createCustomer(
       name: customer.name,
       phone: phoneArray,
       customerNote: customer.customerNote,
-      email: (customer as any).customerEmail || null,
     }),
   })
 
@@ -403,11 +362,8 @@ export async function createCustomer(
   return {
     id: result.data.id.toString(),
     name: result.data.customer_name || '',
-    phone: result.data.phone || [],
-    customerNote: result.data.customer_note || '',
-    dogs: result.data.dogs || [],
-    services: [],
-    appointments: [],
+    phone: result.data.phone || '',
+    customer_note: result.data.customer_note || '',
   }
 }
 
@@ -438,4 +394,71 @@ export async function createDog(
     breed: result.data.breed || '',
     note: result.data.note || '',
   }
+}
+
+// TimeSlot API functions
+export async function getTimeSlots(
+  startDate?: string,
+  endDate?: string,
+  slotType?: string,
+): Promise<any[]> {
+  const params = new URLSearchParams()
+  if (startDate) params.append('start_date', startDate)
+  if (endDate) params.append('end_date', endDate)
+  if (slotType) params.append('slot_type', slotType)
+
+  const response = await fetch(
+    `${API_BASE_URL}/admin/slots${params.toString() ? '?' + params.toString() : ''}`,
+  )
+  const result = await handleResponse<any[]>(response)
+  return result.data || []
+}
+
+export async function getTimeSlotsByDate(date: Date): Promise<any[]> {
+  const dateStr = format(date, 'yyyy-MM-dd')
+  return getTimeSlots(dateStr, dateStr)
+}
+
+export async function createTimeSlot(data: {
+  specific_date: string
+  slot_time: string
+  slot_type?: string[]
+  capacity?: number
+  is_enabled?: boolean
+}): Promise<any> {
+  const response = await fetch(`${API_BASE_URL}/admin/slots`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  })
+  const result = await handleResponse<any>(response)
+  return result.data
+}
+
+export async function updateTimeSlot(
+  slotId: number,
+  data: {
+    slot_type?: string[]
+    capacity?: number
+    is_enabled?: boolean
+  },
+): Promise<any> {
+  const response = await fetch(`${API_BASE_URL}/admin/slots/${slotId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  })
+  const result = await handleResponse<any>(response)
+  return result.data
+}
+
+export async function deleteTimeSlot(slotId: number): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/admin/slots/${slotId}`, {
+    method: 'DELETE',
+  })
+  await handleResponse<null>(response)
 }

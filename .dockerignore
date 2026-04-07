@@ -5,3 +5,11 @@ Dockerfile
 *.log
 .env
 build
+node_modules
+.next
+.git
+.gitignore
+Dockerfile
+docker-compose.yml
+*.log
+.env

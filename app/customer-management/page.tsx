@@ -1,19 +1,19 @@
-"use client"
+'use client'
 
-import { useState, useEffect } from "react"
-import { useSearchParams } from "next/navigation"
-import { Search, Plus, Users, Phone, Dog, Calendar } from "lucide-react"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { CustomerDetailDialog } from "@/components/customer-management-detail-dialog"
-import { CreateCustomerDialog } from "@/components/create-customer-dialog"
-import type { CustomerListItem } from "@/types/customer-management"
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { Search, Plus, Users, Phone, Dog, Calendar } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { CustomerDetailDialog } from '@/components/customer-management-detail-dialog'
+import { CreateCustomerDialog } from '@/components/create-customer-dialog'
+import type { CustomerListItem } from '@/types/customer-management'
 
 export default function CustomerManagementPage() {
   const [customers, setCustomers] = useState<CustomerListItem[]>([])
-  const [searchTerm, setSearchTerm] = useState("")
+  const [searchTerm, setSearchTerm] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState<string | null>(null)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
@@ -24,11 +24,11 @@ export default function CustomerManagementPage() {
     total_dogs_across_customers: 0,
     totalPages: 0,
   })
- 
-  const searchParams = useSearchParams()
-  const customerIdFromUrl = searchParams.get("customerId")
 
-  const fetchCustomers = async (page = 1, search = "") => {
+  const searchParams = useSearchParams()
+  const customerIdFromUrl = searchParams.get('customerId')
+
+  const fetchCustomers = async (page = 1, search = '') => {
     setIsLoading(true)
     try {
       const params = new URLSearchParams({
@@ -37,43 +37,45 @@ export default function CustomerManagementPage() {
       })
 
       if (search.length >= 2) {
-        params.append("search", search)
+        params.append('search', search)
       }
 
-      const response = await fetch(`/api/customer-management/customers?${params}`)
+      const response = await fetch(
+        `/api/customer-management/customers?${params}`,
+      )
       const result = await response.json()
 
       if (result.success) {
         // Transform data format
-        const formattedCustomers = result.data.customers.map((customer: any) => ({
-          id: customer.id.toString(),
-          name: customer.customer_name || "Unnamed Customer",
-          note: customer.customer_note || "",
-          active: customer.customer_active,
-          phones: (customer.phones || []).map((phone: any) => ({
-            id: phone.id.toString(),
-            owner: phone.phone_owner || "",
-            phone: phone.phone,
-            type: phone.phone_type || "",
-            isPrimary: phone.is_primary,
-          })),
-          dogs: (customer.dogs || []).map((dog: any) => ({
-            id: dog.id.toString(),
-            name: dog.dog_name,
-            breed: dog.dog_breed || "",
-            active: dog.dog_active,
-          })),
-          totalDogs: customer.total_dogs || 0,
-          activeDogs: customer.active_dogs || 0,
-        }))
-        console.log("Formatted customers:", formattedCustomers)
-        console.log("Pagination data:", result.data.pagination)
+        const formattedCustomers = result.data.customers.map(
+          (customer: any) => ({
+            id: customer.id.toString(),
+            name: customer.customer_name || 'Unnamed Customer',
+            note: customer.customer_note || '',
+            active: customer.customer_active,
+            phones: (customer.phones || []).map((phone: any) => ({
+              id: phone.id.toString(),
+              owner: phone.phone_owner || '',
+              phone: phone.phone,
+              type: phone.phone_type || '',
+              isPrimary: phone.is_primary,
+            })),
+            dogs: (customer.dogs || []).map((dog: any) => ({
+              id: dog.id.toString(),
+              name: dog.dog_name,
+              breed: dog.dog_breed || '',
+              active: dog.dog_active,
+            })),
+            totalDogs: customer.total_dogs || 0,
+            activeDogs: customer.active_dogs || 0,
+          }),
+        )
 
         setCustomers(formattedCustomers)
         setPagination(result.data.pagination)
       }
     } catch (error) {
-      console.error("Error fetching customers:", error)
+      console.error('Error fetching customers:', error)
     } finally {
       setIsLoading(false)
     }
@@ -95,7 +97,6 @@ export default function CustomerManagementPage() {
   }, [customerIdFromUrl])
 
   const handleCustomerClick = (customerId: string) => {
-    console.log("Selected customer ID:", customerId)
     setSelectedCustomer(customerId)
   }
 
@@ -109,8 +110,12 @@ export default function CustomerManagementPage() {
       {/* Header and Search */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Customer Management</h1>
-          <p className="text-gray-600">Manage customer information, contacts and pet details</p>
+          <h1 className="text-3xl font-bold text-gray-900">
+            Customer Management
+          </h1>
+          <p className="text-gray-600">
+            Manage customer information, contacts and pet details
+          </p>
         </div>
         <Button onClick={() => setIsCreateDialogOpen(true)}>
           <Plus className="h-4 w-4 mr-2" />
@@ -176,11 +181,17 @@ export default function CustomerManagementPage() {
           </div>
         ) : customers.length === 0 ? (
           <div className="text-center py-8">
-            <div className="text-gray-500">{searchTerm ? "No customers found" : "No customer data yet"}</div>
+            <div className="text-gray-500">
+              {searchTerm ? 'No customers found' : 'No customer data yet'}
+            </div>
           </div>
         ) : (
           customers.map((customer) => (
-            <CustomerCard key={customer.id} customer={customer} onClick={() => handleCustomerClick(customer.id)} />
+            <CustomerCard
+              key={customer.id}
+              customer={customer}
+              onClick={() => handleCustomerClick(customer.id)}
+            />
           ))
         )}
       </div>
@@ -231,15 +242,21 @@ interface CustomerCardProps {
 }
 
 function CustomerCard({ customer, onClick }: CustomerCardProps) {
-  const primaryPhone = customer.phones.find((phone) => phone.isPrimary) || customer.phones[0]
+  const primaryPhone =
+    customer.phones.find((phone) => phone.isPrimary) || customer.phones[0]
 
   return (
-    <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={onClick}>
+    <Card
+      className="cursor-pointer hover:shadow-md transition-shadow"
+      onClick={onClick}
+    >
       <CardContent className="p-6">
         <div className="flex justify-between items-start mb-4">
           <div>
             <h3 className="text-lg font-semibold">{customer.name}</h3>
-            {customer.note && <p className="text-sm text-gray-600 mt-1">{customer.note}</p>}
+            {customer.note && (
+              <p className="text-sm text-gray-600 mt-1">{customer.note}</p>
+            )}
           </div>
           <Badge variant="outline" className="bg-green-50 text-green-700">
             Active
@@ -256,7 +273,9 @@ function CustomerCard({ customer, onClick }: CustomerCardProps) {
             {primaryPhone ? (
               <div className="text-sm">
                 <div className="font-medium">{primaryPhone.phone}</div>
-                {primaryPhone.owner && <div className="text-gray-600">{primaryPhone.owner}</div>}
+                {primaryPhone.owner && (
+                  <div className="text-gray-600">{primaryPhone.owner}</div>
+                )}
               </div>
             ) : (
               <div className="text-sm text-gray-500">No phone data</div>
