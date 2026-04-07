@@ -17,11 +17,11 @@ export async function sendSMS(messages: Message[]): Promise<any> {
         for (let i = 0; i < message.length; i++) {
             let code = message.charCodeAt(i);
             if (code === 39) {
-                `);
+
             } else if (code === 8217) {
-                `);
+
             } else if (code === 8216) {
-                `);
+
             }
         }
     };
